@@ -1,0 +1,70 @@
+--[[
+	ScrabbleConfig.luau
+
+	Lightweight configuration for a UI-only Scrabble experience.
+	Contains letter distributions, board dimensions, and helper
+	functions to build a tile bag.
+]]
+
+local ScrabbleConfig = {}
+
+ScrabbleConfig.BOARD_SIZE = 15
+ScrabbleConfig.RACK_SIZE = 7
+
+-- Standard English letter distribution and values (classic Scrabble).
+ScrabbleConfig.LETTERS = {
+	{ letter = "A", count = 9, value = 1 },
+	{ letter = "B", count = 2, value = 3 },
+	{ letter = "C", count = 2, value = 3 },
+	{ letter = "D", count = 4, value = 2 },
+	{ letter = "E", count = 12, value = 1 },
+	{ letter = "F", count = 2, value = 4 },
+	{ letter = "G", count = 3, value = 2 },
+	{ letter = "H", count = 2, value = 4 },
+	{ letter = "I", count = 9, value = 1 },
+	{ letter = "J", count = 1, value = 8 },
+	{ letter = "K", count = 1, value = 5 },
+	{ letter = "L", count = 4, value = 1 },
+	{ letter = "M", count = 2, value = 3 },
+	{ letter = "N", count = 6, value = 1 },
+	{ letter = "O", count = 8, value = 1 },
+	{ letter = "P", count = 2, value = 3 },
+	{ letter = "Q", count = 1, value = 10 },
+	{ letter = "R", count = 6, value = 1 },
+	{ letter = "S", count = 4, value = 1 },
+	{ letter = "T", count = 6, value = 1 },
+	{ letter = "U", count = 4, value = 1 },
+	{ letter = "V", count = 2, value = 4 },
+	{ letter = "W", count = 2, value = 4 },
+	{ letter = "X", count = 1, value = 8 },
+	{ letter = "Y", count = 2, value = 4 },
+	{ letter = "Z", count = 1, value = 10 },
+}
+
+-- Build a fresh shuffled bag of tiles
+function ScrabbleConfig.buildBag()
+	local bag = {}
+	for _, item in ipairs(ScrabbleConfig.LETTERS) do
+		for _ = 1, item.count do
+			table.insert(bag, item.letter)
+		end
+	end
+	-- Fisher-Yates shuffle
+	for i = #bag, 2, -1 do
+		local j = math.random(i)
+		bag[i], bag[j] = bag[j], bag[i]
+	end
+	return bag
+end
+
+-- Get letter value lookup
+function ScrabbleConfig.getLetterValues()
+	local map = {}
+	for _, item in ipairs(ScrabbleConfig.LETTERS) do
+		map[item.letter] = item.value
+	end
+	return map
+end
+
+return ScrabbleConfig
+

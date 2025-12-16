@@ -1,0 +1,245 @@
+{
+  "name": "genrojotree",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$className": "Folder",
+        "Services": {
+          "$className": "Folder",
+          "ChatTagService": {
+            "$className": "Folder",
+            "ChatTagServiceClient": {
+              "$path": "src/services/ChatTagService/Client.luau"
+            }
+          },
+          "CodesService": {
+            "$className": "Folder",
+            "CodesServiceClient": {
+              "$path": "src/services/CodesService/Client.luau"
+            }
+          },
+          "CurrencyService": {
+            "$className": "Folder",
+            "CurrencyServiceClient": {
+              "$path": "src/services/CurrencyService/Client.luau"
+            }
+          },
+          "DailyRewardsService": {
+            "$className": "Folder",
+            "DailyRewardsServiceClient": {
+              "$path": "src/services/DailyRewardsService/Client.luau"
+            }
+          },
+          "InventoryService": {
+            "$className": "Folder",
+            "InventoryServiceClient": {
+              "$path": "src/services/InventoryService/Client.luau"
+            }
+          },
+          "LeaderboardService": {
+            "$className": "Folder",
+            "LeaderboardServiceClient": {
+              "$path": "src/services/LeaderboardService/Client.luau"
+            }
+          },
+          "PolicyService": {
+            "$className": "Folder",
+            "PolicyServiceClient": {
+              "$path": "src/services/PolicyService/Client.luau"
+            }
+          },
+          "PurchaseService": {
+            "$className": "Folder",
+            "PurchaseServiceClient": {
+              "$path": "src/services/PurchaseService/Client.luau"
+            }
+          },
+          "ScrabbleService": {
+            "$className": "Folder",
+            "ScrabbleServiceClient": {
+              "$path": "src/services/ScrabbleService/Client.luau"
+            }
+          },
+          "SettingsService": {
+            "$className": "Folder",
+            "SettingsServiceClient": {
+              "$path": "src/services/SettingsService/Client.luau"
+            }
+          },
+          "StatsService": {
+            "$className": "Folder",
+            "StatsServiceClient": {
+              "$path": "src/services/StatsService/Client.luau"
+            }
+          },
+          "TasksService": {
+            "$className": "Folder",
+            "TasksServiceClient": {
+              "$path": "src/services/TasksService/Client.luau"
+            }
+          }
+        },
+        "Classes": {
+          "$className": "Folder"
+        },
+        "Modules": {
+          "$className": "Folder",
+          "Core": {
+            "$className": "Folder",
+            "DataTemplate": {
+              "$path": "src/modules/core/DataTemplate.luau"
+            },
+            "GameConstants": {
+              "$path": "src/modules/core/GameConstants.luau"
+            },
+            "SoundUtils": {
+              "$path": "src/modules/core/SoundUtils.luau"
+            },
+            "ValidationUtils": {
+              "$path": "src/modules/core/ValidationUtils.luau"
+            }
+          },
+          "Game": {
+            "$className": "Folder",
+            "Codes": {
+              "$path": "src/modules/game/Codes.luau"
+            },
+            "DailyRewards": {
+              "$path": "src/modules/game/DailyRewards.luau"
+            },
+            "Purchases": {
+              "$path": "src/modules/game/Purchases.luau"
+            },
+            "ScrabbleConfig": {
+              "$path": "src/modules/game/ScrabbleConfig.luau"
+            },
+            "ScrabbleDictionary": {
+              "$path": "src/modules/game/ScrabbleDictionary"
+            }
+          },
+          "Math": {
+            "$className": "Folder",
+            "Evaluator": {
+              "$path": "src/modules/math/Evaluator.luau"
+            }
+          }
+        }
+      },
+      "Packages": {
+        "$path": "Packages"
+      },
+      "UI": {
+        "$path": "src/ui"
+      }
+    },
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/startup/Server.server.luau"
+      },
+      "Services": {
+        "$className": "Folder",
+        "AnalyticsService": {
+          "$className": "Folder",
+          "AnalyticsServiceServer": {
+            "$path": "src/services/AnalyticsService/Server.luau"
+          }
+        },
+        "ChatTagService": {
+          "$className": "Folder",
+          "ChatTagServiceServer": {
+            "$path": "src/services/ChatTagService/Server.luau"
+          }
+        },
+        "CodesService": {
+          "$className": "Folder",
+          "CodesServiceServer": {
+            "$path": "src/services/CodesService/Server.luau"
+          }
+        },
+        "CurrencyService": {
+          "$className": "Folder",
+          "CurrencyServiceServer": {
+            "$path": "src/services/CurrencyService/Server.luau"
+          }
+        },
+        "DailyRewardsService": {
+          "$className": "Folder",
+          "DailyRewardsServiceServer": {
+            "$path": "src/services/DailyRewardsService/Server.luau"
+          }
+        },
+        "InventoryService": {
+          "$className": "Folder",
+          "InventoryServiceServer": {
+            "$path": "src/services/InventoryService/Server.luau"
+          }
+        },
+        "LeaderboardService": {
+          "$className": "Folder",
+          "LeaderboardServiceServer": {
+            "$path": "src/services/LeaderboardService/Server.luau"
+          }
+        },
+        "PolicyService": {
+          "$className": "Folder",
+          "PolicyServiceServer": {
+            "$path": "src/services/PolicyService/Server.luau"
+          }
+        },
+        "PurchaseService": {
+          "$className": "Folder",
+          "PurchaseServiceServer": {
+            "$path": "src/services/PurchaseService/Server.luau"
+          }
+        },
+        "ScrabbleService": {
+          "$className": "Folder",
+          "ScrabbleServiceServer": {
+            "$path": "src/services/ScrabbleService/Server.luau"
+          }
+        },
+        "SettingsService": {
+          "$className": "Folder",
+          "SettingsServiceServer": {
+            "$path": "src/services/SettingsService/Server.luau"
+          }
+        },
+        "StatsService": {
+          "$className": "Folder",
+          "StatsServiceServer": {
+            "$path": "src/services/StatsService/Server.luau"
+          }
+        },
+        "StreakService": {
+          "$className": "Folder",
+          "StreakServiceServer": {
+            "$path": "src/services/StreakService/Server.luau"
+          }
+        },
+        "TasksService": {
+          "$className": "Folder",
+          "TasksServiceServer": {
+            "$path": "src/services/TasksService/Server.luau"
+          }
+        }
+      },
+      "Classes": {
+        "$className": "Folder"
+      },
+      "Modules": {
+        "$className": "Folder"
+      },
+      "ServerPackages": {
+        "$path": "ServerPackages"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/startup/Client.client.luau"
+        }
+      }
+    }
+  }
+}
