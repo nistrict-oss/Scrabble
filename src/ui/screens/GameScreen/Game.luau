@@ -7,16 +7,19 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local React = require(ReplicatedStorage.Packages.React)
 local GameBoard = require(ReplicatedStorage.UI.components.game.GameBoard)
 local PlayerRack = require(ReplicatedStorage.UI.components.game.PlayerRack)
 local ScoreBoard = require(ReplicatedStorage.UI.components.game.ScoreBoard)
 local GameControls = require(ReplicatedStorage.UI.components.game.GameControls)
 local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local ScrabbleServiceClient = require(ReplicatedStorage.Shared.Services.ScrabbleService.ScrabbleServiceClient)
 local DragPreview = require(ReplicatedStorage.UI.components.game.DragPreview)
 local WordValidationDisplay = require(ReplicatedStorage.UI.components.game.WordValidationDisplay)
 local useWordValidatorHook = require(ReplicatedStorage.UI.hooks.useWordValidator)
+local EndScreen = require(ReplicatedStorage.UI.screens.GameScreen.EndScreen)
 
 local e = React.createElement
 local useWordValidator = useWordValidatorHook.useWordValidator
@@ -33,23 +36,6 @@ return function(props: GameProps)
 	local gameState = props.GameState
 	local lobbyState = props.LobbyState
 	
-	-- Debug: Log when game state changes
-	React.useEffect(function()
-		if gameState and gameState.Board then
-			local letterCount = 0
-			for r = 1, 15 do
-				if gameState.Board[r] then
-					for c = 1, 15 do
-						if gameState.Board[r][c] then
-							letterCount += 1
-						end
-					end
-				end
-			end
-			print("[Game Component] Received gameState with", letterCount, "letters on board")
-		end
-	end, { gameState })
-	
 	-- Local placement state
 	local selectedTileIndex, setSelectedTileIndex = React.useState(nil :: number?)
 	local placedTiles, setPlacedTiles = React.useState({} :: { { row: number, col: number, letter: string, rackIndex: number } })
@@ -62,149 +48,76 @@ return function(props: GameProps)
 	
 	-- Exchange mode state
 	local isExchangeMode, setIsExchangeMode = React.useState(false)
+	-- Track exchange selection with rack indices instead of display indices
 	local exchangeSelection, setExchangeSelection = React.useState({} :: { [number]: boolean })
 	
-	if not gameState then
-		return e("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 1,
-		}, {
-			Loading = e("TextLabel", {
-				Size = UDim2.fromScale(1, 1),
-				BackgroundTransparency = 1,
-				Text = "Loading game...",
-				TextColor3 = Color3.new(1, 1, 1),
-				TextScaled = true,
-				FontFace = Font.new(
-					"rbxassetid://11702779517",
-					Enum.FontWeight.Bold,
-					Enum.FontStyle.Italic
-				),
-			}),
-		})
-	end
+	-- Chat state
+	local chatMessage, setChatMessage = React.useState("")
+	local chatHeight, setChatHeight = React.useState(50)
+	local chatInputRef = React.useRef(nil)
 	
-	-- Check if game ended
-	if gameState.Phase == "ended" then
-		-- Find winner
-		local winnerName = "Unknown"
-		local highScore = 0
-		if gameState.Scores then
-			for userId, score in pairs(gameState.Scores) do
-				if score > highScore then
-					highScore = score
-					local player = Players:GetPlayerByUserId(userId)
-					winnerName = player and player.Name or ("Player " .. userId)
+	-- Handle Enter key via UserInputService
+	React.useEffect(function()
+		local conn = UserInputService.InputBegan:Connect(function(input)
+			if input.KeyCode == Enum.KeyCode.Return then
+				local focused = UserInputService:GetFocusedTextBox()
+				if focused and focused == chatInputRef.current then
+					local text = focused.Text
+					if #text > 0 then
+						ScrabbleServiceClient:sendMessage(text)
+						setChatMessage("")
+						focused.Text = ""
+						-- Re-capture focus to keep typing
+						task.defer(function()
+							focused:CaptureFocus()
+						end)
+					end
 				end
 			end
+		end)
+		return function()
+			conn:Disconnect()
 		end
-		
-		return e("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = Color3.fromRGB(40, 60, 120),
-		}, {
-			ResultPanel = e("Frame", {
-				Size = UDim2.fromScale(0.4, 0.4),
-				Position = UDim2.fromScale(0.5, 0.5),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundColor3 = Color3.fromRGB(35, 55, 100),
-			}, {
-				UICorner = e("UICorner", {
-					CornerRadius = UDim.new(0.05, 0),
-				}),
-				
-				UIStroke = e("UIStroke", {
-					Color = Color3.new(1, 1, 1),
-					Thickness = 3,
-				}),
-				
-				Title = e("TextLabel", {
-					Size = UDim2.fromScale(1, 0.25),
-					Position = UDim2.fromScale(0, 0.1),
-					BackgroundTransparency = 1,
-					Text = "Game Over!",
-					TextColor3 = Color3.new(1, 1, 1),
-					TextScaled = true,
-					FontFace = Font.new(
-						"rbxassetid://11702779517",
-						Enum.FontWeight.Heavy,
-						Enum.FontStyle.Italic
-					),
-				}),
-				
-				Winner = e("TextLabel", {
-					Size = UDim2.fromScale(1, 0.2),
-					Position = UDim2.fromScale(0, 0.35),
-					BackgroundTransparency = 1,
-					Text = winnerName .. " wins!",
-					TextColor3 = Color3.fromRGB(249, 0, 149), -- Pink accent
-					TextScaled = true,
-					FontFace = Font.new(
-						"rbxassetid://11702779517",
-						Enum.FontWeight.Bold,
-						Enum.FontStyle.Normal
-					),
-				}),
-				
-				Score = e("TextLabel", {
-					Size = UDim2.fromScale(1, 0.15),
-					Position = UDim2.fromScale(0, 0.55),
-					BackgroundTransparency = 1,
-					Text = "Score: " .. highScore,
-					TextColor3 = Color3.fromRGB(150, 150, 180),
-					TextScaled = true,
-					FontFace = Font.new(
-						"rbxassetid://11702779517",
-						Enum.FontWeight.Medium,
-						Enum.FontStyle.Normal
-					),
-				}),
-				
-				LeaveButton = e("Frame", {
-					Size = UDim2.fromScale(0.5, 0.15),
-					Position = UDim2.fromScale(0.5, 0.8),
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					BackgroundTransparency = 1,
-				}, {
-					Button = e(TextButton, {
-						Text = "Leave",
-						Variant = "primary",
-						Size = UDim2.fromScale(1, 1),
-						OnClick = function()
-							ScrabbleServiceClient:leaveLobby()
-							if props.OnLeave then
-								props.OnLeave()
-							end
-						end,
-					}),
-				}),
-			}),
-		})
-	end
+	end, {})
+	
 	
 	-- Game data
-	local board = gameState.Board or {}
-	local myRack = gameState.Rack or {} -- Server sends Rack directly per player
-	local scores = gameState.Scores or {}
-	local turnOrder = gameState.TurnOrder or {}
-	local turnIndex = gameState.TurnIndex or 1
-	local currentTurnUserId = gameState.TurnUserId or (turnOrder[turnIndex])
+	local board = if gameState then (gameState.Board or {}) else {}
+	local myRack = if gameState then (gameState.Rack or {}) else {} -- Server sends Rack directly per player
+	local scores = if gameState then (gameState.Scores or {}) else {}
+	local turnOrder = if gameState then (gameState.TurnOrder or {}) else {}
+	local turnIndex = if gameState then (gameState.TurnIndex or 1) else 1
+	local currentTurnUserId = if gameState then (gameState.TurnUserId or (turnOrder[turnIndex])) else nil
 	local isMyTurn = currentTurnUserId == LocalPlayer.UserId
-	local tilesInBag = gameState.BagCount or 0
+	local tilesInBag = if gameState then (gameState.BagCount or 0) else 0
 	
-	-- Build display rack (remove placed tiles)
-	local displayRack = {}
-	local usedIndices = {}
+	-- Track which tiles are placed or exchanged
+	local hiddenIndices = {}
+	
+	-- Mark placed tiles as hidden
 	for _, placed in ipairs(placedTiles) do
-		usedIndices[placed.rackIndex] = true
+		hiddenIndices[placed.rackIndex] = true
 	end
 	
-	-- Map from myRack index to displayRack index
+	-- Mark exchanged tiles as hidden in exchange mode
+	if isExchangeMode then
+		for i, selected in pairs(exchangeSelection) do
+			if selected then
+				hiddenIndices[i] = true
+			end
+		end
+	end
+	
+	-- Build display rack maintaining original order
+	local displayRack = {}
 	local rackIndexToDisplayIndex = {}
-	for i, letter in ipairs(myRack) do
-		if not usedIndices[i] then
-			table.insert(displayRack, letter)
-			rackIndexToDisplayIndex[i] = #displayRack
+	local displayIndex = 1
+	
+	for i = 1, #myRack do
+		if not hiddenIndices[i] then
+			table.insert(displayRack, myRack[i])
+			rackIndexToDisplayIndex[i] = displayIndex
+			displayIndex += 1
 		end
 	end
 	
@@ -226,13 +139,38 @@ return function(props: GameProps)
 		table.insert(previewCells, { row = placed.row, col = placed.col })
 	end
 	
-	-- Word validation
+	-- Word validation (MUST be called before any early returns)
 	local wordValidation = useWordValidator(placedTiles, board)
+
+	if not gameState then
+		return e("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+		}, {
+			Loading = e("TextLabel", {
+				Size = UDim2.fromScale(1, 1),
+				BackgroundTransparency = 1,
+				Text = "Loading game...",
+				TextColor3 = Color3.new(1, 1, 1),
+				TextScaled = true,
+				FontFace = Font.new(
+					"rbxassetid://11702779517",
+					Enum.FontWeight.Bold,
+					Enum.FontStyle.Italic
+				),
+			}),
+		})
+	end
 	
 	-- Build player scores for ScoreBoard
 	-- Helper for score lookup (handles string/number key conversion)
 	local function getScore(userId): number
 		return scores[userId] or scores[tostring(userId)] or 0
+	end
+	
+	local playerTimes = gameState.PlayerTimes or {}
+	local function getPlayerTime(userId): number?
+		return playerTimes[userId] or playerTimes[tostring(userId)]
 	end
 	
 	local playerScores = {}
@@ -245,13 +183,12 @@ return function(props: GameProps)
 			Name = player and player.Name or ("Player " .. tostring(userId)),
 			Score = getScore(userId),
 			IsCurrentTurn = userId == currentTurnUserId or tostring(userId) == tostring(currentTurnUserId),
+			TimeRemaining = getPlayerTime(userId),
 		})
 	end
 	
 	-- Handlers
 	local function handleTileClick(index: number, letter: string)
-		if not isMyTurn then return end
-		
 		if selectedTileIndex == index then
 			setSelectedTileIndex(nil)
 		else
@@ -261,13 +198,11 @@ return function(props: GameProps)
 	
 	-- Drag handlers
 	local function handleDragStart(index: number, letter: string)
-		if not isMyTurn then return end
-		
 		-- Find actual rack index
 		local actualIndex = 0
 		local count = 0
 		for i, _ in ipairs(myRack) do
-			if not usedIndices[i] then
+			if not hiddenIndices[i] then
 				count += 1
 				if count == index then
 					actualIndex = i
@@ -301,8 +236,6 @@ return function(props: GameProps)
 	end
 	
 	local function handleDragFromBoard(row: number, col: number, letter: string)
-		if not isMyTurn then return end
-		
 		-- Find this tile in placedTiles and get its rack index
 		local rackIndex = nil
 		local newPlaced = {}
@@ -324,9 +257,7 @@ return function(props: GameProps)
 	end
 	
 	local function handleDrop(row: number, col: number)
-		if not draggingLetter or not draggingIndex then
-			return
-		end
+		if not draggingLetter or not draggingIndex then return end
 		
 		-- Check if cell is empty
 		if board[row] and board[row][col] then
@@ -395,7 +326,6 @@ return function(props: GameProps)
 	end, { draggingLetter })
 	
 	local function handleCellClick(row: number, col: number)
-		if not isMyTurn then return end
 		if not selectedTileIndex then return end
 		
 		-- Check if cell is already occupied (on server board)
@@ -421,7 +351,7 @@ return function(props: GameProps)
 		local actualIndex = 0
 		local count = 0
 		for i, _ in ipairs(myRack) do
-			if not usedIndices[i] then
+			if not hiddenIndices[i] then
 				count += 1
 				if count == selectedTileIndex then
 					actualIndex = i
@@ -453,15 +383,13 @@ return function(props: GameProps)
 	end
 	
 	local function handleSubmit()
+		if not isMyTurn then return end
 		if #placedTiles == 0 then return end
 		
 		-- Check validation before submitting
 		if not wordValidation.isValid then
-			print("[Game] Cannot submit - word is invalid:", wordValidation.error or "unknown error")
 			return
 		end
-		
-		print("[Game] Submitting word:", wordValidation.word, "direction:", wordValidation.direction, "score:", wordValidation.score)
 		
 		-- Send placed tiles to server
 		ScrabbleServiceClient:placeWord(placedTiles, wordValidation.direction)
@@ -471,35 +399,46 @@ return function(props: GameProps)
 	end
 	
 	local function handlePass()
+		if not isMyTurn then return end
 		ScrabbleServiceClient:passTurn()
 		handleClear()
 	end
 	
 	local function handleExchange()
-		if isExchangeMode then
-			-- Confirm exchange - send selected tiles to server
-			local lettersToExchange = {}
-			for i, selected in pairs(exchangeSelection) do
-				if selected and myRack[i] then
-					table.insert(lettersToExchange, myRack[i])
-				end
-			end
-			
-			if #lettersToExchange > 0 then
-				print("[Game] Exchanging tiles:", table.concat(lettersToExchange, ", "))
-				ScrabbleServiceClient:exchangeTiles(lettersToExchange)
-			end
-			
-			-- Exit exchange mode
-			setIsExchangeMode(false)
-			setExchangeSelection({})
-		else
-			-- Enter exchange mode
-			handleClear() -- Clear any placed tiles
-			setIsExchangeMode(true)
-			setExchangeSelection({})
-		end
-	end
+		if not isMyTurn then return end
+    if isExchangeMode then
+        -- Confirm exchange - send selected tiles to server
+        local lettersToExchange = {}
+        local exchangeIndices = {}
+        
+        -- Find all selected tiles by their rack indices
+        for rackIndex, selected in pairs(exchangeSelection) do
+            if selected and myRack[rackIndex] then
+                table.insert(lettersToExchange, myRack[rackIndex])
+                table.insert(exchangeIndices, rackIndex)
+            end
+        end
+        
+        if #lettersToExchange > 0 then
+            -- Store which positions are being exchanged to maintain order
+            local exchangeData = {
+                Letters = lettersToExchange,
+                Indices = exchangeIndices
+            }
+            
+            ScrabbleServiceClient:exchangeTiles(exchangeData)
+        end
+        
+        -- Exit exchange mode
+        setIsExchangeMode(false)
+        setExchangeSelection({})
+    else
+        -- Enter exchange mode
+        handleClear() -- Clear any placed tiles
+        setIsExchangeMode(true)
+        setExchangeSelection({})
+    end
+end
 	
 	local function handleCancelExchange()
 		setIsExchangeMode(false)
@@ -519,8 +458,13 @@ return function(props: GameProps)
 	
 	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(40, 60, 120),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 	}, {
+		UIGradient = e("UIGradient", {
+			Color = ColorSequence.new(GameConstants.Gradients.frame),
+			Rotation = 90,
+		}),
+		
 		-- Drag preview (floating tile following mouse)
 		DragPreviewUI = draggingLetter and e(DragPreview, {
 			Letter = draggingLetter,
@@ -589,6 +533,7 @@ return function(props: GameProps)
 						Score = wordValidation.score,
 						Direction = wordValidation.direction,
 						Error = wordValidation.error,
+						Multipliers = wordValidation.multipliers,
 					}),
 				}),
 				
@@ -642,10 +587,10 @@ return function(props: GameProps)
 				}),
 			}),
 			
-			-- Right panel: Game log / chat
+			-- RightPanel: Game log / chat
 			RightPanel = e("Frame", {
 				Size = UDim2.fromScale(0.18, 1),
-				BackgroundColor3 = Color3.fromRGB(35, 55, 100),
+				BackgroundColor3 = Color3.fromRGB(30, 45, 90), -- Match GameBoard
 				LayoutOrder = 3,
 			}, {
 				UICorner = e("UICorner", {
@@ -657,63 +602,241 @@ return function(props: GameProps)
 					Thickness = 2,
 				}),
 				
-				Header = e("TextLabel", {
-					Size = UDim2.fromScale(1, 0.05),
+				-- LOG SECTION (Top 85%)
+				LogContainer = e("Frame", {
+					Size = UDim2.fromScale(1, 0.85),
 					BackgroundTransparency = 1,
-					Text = "GAME LOG",
-					TextColor3 = Color3.new(1, 1, 1),
-					TextScaled = true,
-					FontFace = Font.new(
-						"rbxassetid://11702779517",
-						Enum.FontWeight.Heavy,
-						Enum.FontStyle.Italic
-					),
 				}, {
-					UIPadding = e("UIPadding", {
-						PaddingTop = UDim.new(0.3, 0),
+					Header = e("TextLabel", {
+						Size = UDim2.fromScale(1, 0.08),
+						BackgroundTransparency = 1,
+						Text = "GAME LOG",
+						TextColor3 = Color3.new(1, 1, 1),
+						TextScaled = true,
+						FontFace = Font.new(
+							"rbxassetid://11702779517",
+							Enum.FontWeight.Heavy,
+							Enum.FontStyle.Italic
+						),
+					}, {
+						UIPadding = e("UIPadding", {
+							PaddingTop = UDim.new(0.2, 0),
+							PaddingBottom = UDim.new(0.1, 0),
+						}),
+					}),
+					
+					LogScroll = e("ScrollingFrame", {
+						Size = UDim2.fromScale(0.9, 0.9),
+						Position = UDim2.fromScale(0.5, 0.1),
+						AnchorPoint = Vector2.new(0.5, 0),
+						BackgroundTransparency = 1,
+						ScrollBarThickness = 4,
+						ScrollBarImageColor3 = Color3.fromRGB(249, 0, 149),
+						AutomaticCanvasSize = Enum.AutomaticSize.Y,
+						CanvasSize = UDim2.fromScale(0, 0),
+					}, (function()
+						local children = {
+							UIListLayout = e("UIListLayout", {
+								SortOrder = Enum.SortOrder.LayoutOrder,
+								Padding = UDim.new(0, 0), -- Remove padding for grouped look
+							}),
+							UIPadding = e("UIPadding", {
+								PaddingLeft = UDim.new(0.02, 0),
+								PaddingRight = UDim.new(0.02, 0), 
+							}),
+						}
+						
+						-- Log entries
+						local log = gameState.Log or {}
+						local lastUserId = nil
+						
+						for i, entry in ipairs(log) do
+							if type(entry) == "table" and entry.UserId and entry.Message then
+								local isConsecutive = (lastUserId == entry.UserId)
+								lastUserId = entry.UserId
+								
+								-- Extra spacing for new speakers
+								local topSpacing = isConsecutive and 0 or 8
+								
+								-- CHAT MESSAGE (PFP + Name + Text)
+								children["Log_" .. i] = e("Frame", {
+									Size = UDim2.new(1, 0, 0, 0),
+									AutomaticSize = Enum.AutomaticSize.Y,
+									BackgroundTransparency = 1,
+									LayoutOrder = i,
+								}, {
+									Avatar = not isConsecutive and e("ImageLabel", {
+										Size = UDim2.new(0, 30, 0, 30),
+										Position = UDim2.new(0, 0, 0, topSpacing), -- Offset by spacing
+										BackgroundTransparency = 1,
+										Image = "rbxthumb://type=AvatarHeadShot&id=" .. entry.UserId .. "&w=150&h=150",
+									}, {
+										UICorner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+										UIStroke = e("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 1 }),
+									}),
+									
+									Content = e("Frame", {
+										Size = UDim2.new(1, -38, 1, 0),
+										Position = UDim2.new(0, 38, 0, topSpacing), -- Offset by spacing
+										BackgroundTransparency = 1,
+									}, {
+										UIListLayout = e("UIListLayout", {
+											SortOrder = Enum.SortOrder.LayoutOrder,
+											Padding = UDim.new(0, 2),
+										}),
+										
+										Name = not isConsecutive and e("TextLabel", {
+											Size = UDim2.new(1, 0, 0, 14),
+											BackgroundTransparency = 1,
+											Text = entry.Name or "Unknown",
+											TextColor3 = Color3.fromRGB(249, 0, 149), -- Pink accent for name
+											TextSize = 12,
+											TextXAlignment = Enum.TextXAlignment.Left,
+											FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+											LayoutOrder = 1,
+										}),
+										
+										Message = e("TextLabel", {
+											Size = UDim2.new(1, 0, 0, 0), -- Automatic Height
+											AutomaticSize = Enum.AutomaticSize.Y,
+											BackgroundTransparency = 1,
+											Text = entry.Message,
+											TextColor3 = Color3.new(1, 1, 1),
+											TextSize = 14,
+											TextWrapped = true,
+											TextXAlignment = Enum.TextXAlignment.Left,
+											LayoutOrder = 2,
+											FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Normal),
+										}),
+									}),
+								})
+							else
+								lastUserId = nil -- Reset on system message
+								-- SYSTEM MESSAGE (Text Only)
+								children["Log_" .. i] = e("TextLabel", {
+									Size = UDim2.new(1, 0, 0, 25),
+									AutomaticSize = Enum.AutomaticSize.Y,
+									BackgroundTransparency = 1,
+									Text = tostring(entry),
+									TextColor3 = Color3.fromRGB(200, 200, 220),
+									TextSize = 14,
+									TextWrapped = true,
+									TextXAlignment = Enum.TextXAlignment.Left,
+									LayoutOrder = i,
+									FontFace = Font.new(
+										"rbxassetid://11702779517",
+										Enum.FontWeight.Bold,
+										Enum.FontStyle.Normal
+									),
+								})
+							end
+						end
+						
+						return children
+					end)()),
+				}),
+
+				-- DIVIDER
+				Divider = e("Frame", {
+					Size = UDim2.fromScale(0.9, 0.005),
+					Position = UDim2.fromScale(0.5, 0.935),
+					AnchorPoint = Vector2.new(0.5, 0),
+					BackgroundColor3 = Color3.new(1, 1, 1),
+					BackgroundTransparency = 0.5,
+				}, {
+					UICorner = e("UICorner", {
+						CornerRadius = UDim.new(1, 0),
 					}),
 				}),
 				
-				LogScroll = e("ScrollingFrame", {
-					Size = UDim2.fromScale(0.9, 0.9),
-					Position = UDim2.fromScale(0.5, 0.55),
-					AnchorPoint = Vector2.new(0.5, 0.5),
+				-- CHAT INPUT (Bottom 14%)
+				ChatContainer = e("Frame", {
+					Size = UDim2.fromScale(1, 0.05),
+					Position = UDim2.fromScale(0, 0.95),
 					BackgroundTransparency = 1,
-					ScrollBarThickness = 4,
-					ScrollBarImageColor3 = Color3.fromRGB(249, 0, 149),
-					AutomaticCanvasSize = Enum.AutomaticSize.Y,
-					CanvasSize = UDim2.fromScale(0, 0),
-				}, (function()
-					local children = {
-						UIListLayout = e("UIListLayout", {
-							SortOrder = Enum.SortOrder.LayoutOrder,
-							Padding = UDim.new(0, 5),
-						}),
-					}
-					
-					-- Log entries
-					local log = gameState.Log or {}
-					for i, entry in ipairs(log) do
-						children["Log_" .. i] = e("TextLabel", {
-							Size = UDim2.new(1, 0, 0, 25),
+				}, {
+					UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
+						AspectRatio = 10,
+					}),
+
+					UIPadding = e("UIPadding", {
+						PaddingTop = UDim.new(0.1, 0),
+						PaddingLeft = UDim.new(0.05, 0),
+						PaddingRight = UDim.new(0.05, 0),
+						PaddingBottom = UDim.new(0.1, 0),
+					}),
+
+					InputContainer = e("ScrollingFrame", {
+						Size = UDim2.fromScale(0.78, 1),
+						Position = UDim2.fromScale(0, 0.5),
+						AnchorPoint = Vector2.new(0, 0.5),
+						BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+						BackgroundTransparency = 0.5,
+						ScrollBarThickness = 0.5,
+						ScrollBarImageColor3 = Color3.fromRGB(249, 0, 149),
+						AutomaticCanvasSize = Enum.AutomaticSize.Y,
+					}, {
+						UICorner = e("UICorner", { CornerRadius = UDim.new(0.3, 0) }),
+
+						TextBox = e("TextBox", {
+							Size = UDim2.fromScale(0.9, 0.5),
+							Position = UDim2.fromScale(0.5, 0.5),
+							AnchorPoint = Vector2.new(0.5, 0.5),
 							BackgroundTransparency = 1,
-							Text = entry,
-							TextColor3 = Color3.fromRGB(180, 180, 200),
-							TextWrapped = true,
+							Text = "", 
+							PlaceholderText = "Chat...",
+							PlaceholderColor3 = Color3.fromRGB(200, 200, 200),
+							TextColor3 = Color3.new(1, 1, 1),
+							TextSize = 14,
+							MultiLine = false, 
+							ClearTextOnFocus = false,
+							ref = chatInputRef,
 							TextXAlignment = Enum.TextXAlignment.Left,
-							LayoutOrder = i,
-							FontFace = Font.new(
-								"rbxassetid://11702779517",
-								Enum.FontWeight.Medium,
-								Enum.FontStyle.Normal
-							),
-						})
-					end
+							TextYAlignment = Enum.TextYAlignment.Top,
+							FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Normal),
+							[React.Change.Text] = function(rbx)
+								local text = rbx.Text
+								if #text > 200 then
+									text = string.sub(text, 1, 200)
+									rbx.Text = text
+								end
+								setChatMessage(text)
+							end,
+							[React.Event.FocusLost] = function(rbx, enterPressed)
+								if enterPressed and #chatMessage > 0 then
+								ScrabbleServiceClient:sendMessage(chatMessage)
+								setChatMessage("")
+								rbx.Text = ""
+									task.defer(function()
+										rbx:CaptureFocus()
+									end)
+								end
+							end,
+						}),
+					}),
 					
-					return children
-				end)()),
+					SendButton = e(TextButton, {
+						Text = "SEND",
+						Variant = "primary",
+						Size = UDim2.fromScale(0.2, 1),
+						Position = UDim2.fromScale(1, 0.5),
+						AnchorPoint = Vector2.new(1, 0.5),
+						OnClick = function()
+							if #chatMessage > 0 then
+								ScrabbleServiceClient:sendMessage(chatMessage)
+								setChatMessage("")
+							end
+						end
+					})
+				}),
 			}),
 		}),
+
+		EndScreenOverlay = gameState.Phase == "ended" and e(EndScreen, {
+			GameState = gameState,
+			LobbyState = lobbyState,
+			OnLeave = props.OnLeave,
+		}) or nil,
 	})
 end
 

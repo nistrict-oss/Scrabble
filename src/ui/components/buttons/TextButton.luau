@@ -1,26 +1,14 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local React = require(ReplicatedStorage.Packages.React)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 
 local e = React.createElement
 
 -- Button style presets
 local STYLES = {
-	primary = {
-		gradient = {
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(249, 0, 149)),
-			ColorSequenceKeypoint.new(0.918269, Color3.fromRGB(249, 0, 149)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 2, 109)),
-		},
-	},
-	secondary = {
-		gradient = {
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 70, 120)),
-			ColorSequenceKeypoint.new(0.89, Color3.fromRGB(45, 70, 120)),
-			ColorSequenceKeypoint.new(0.91, Color3.fromRGB(35, 55, 100)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(35, 55, 100)),
-		},
-	},
+	primary = GameConstants.Gradients.buttonActive,
+	secondary = GameConstants.Gradients.buttonInactive,
 }
 
 export type TextButtonProps = {
@@ -46,6 +34,7 @@ return function(props: TextButtonProps)
 	local corner = props.CornerRadius or UDim.new(0.1875, 0)
 	local size = props.Size or UDim2.fromScale(1, 1)
 	local style = STYLES[variant]
+	local backgroundImage = props.BackgroundImage or "rbxassetid://130347638303988"
 
 	local function handleClick()
 		if disabled then return end
@@ -174,7 +163,7 @@ return function(props: TextButtonProps)
 			}),
 
 			UIGradient = style and e("UIGradient", {
-				Color = ColorSequence.new(style.gradient),
+				Color = ColorSequence.new(style),
 				Rotation = 90,
 			}) or nil,
 
@@ -184,14 +173,14 @@ return function(props: TextButtonProps)
 				Transparency = disabled and 0.5 or 0,
 			}) or nil,
 
-			Background = props.BackgroundImage and e("ImageLabel", {
+			Background = e("ImageLabel", {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				BackgroundTransparency = 1,
-				Image = props.BackgroundImage,
+				Image = backgroundImage,
 				Position = UDim2.fromScale(0.5, 0.5),
 				Size = UDim2.fromScale(1.05, 1.225),
 				ZIndex = 0,
-			}) or nil,
+			}),
 
 			TextLabel = e("TextLabel", {
 				Size = UDim2.fromScale(1, 1),

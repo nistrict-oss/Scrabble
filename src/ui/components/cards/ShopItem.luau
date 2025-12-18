@@ -71,23 +71,15 @@ return function(props: ShopItemProps)
 			Thickness = 2,
 		}),
 
-		purchaseButton = if isRobux then
-			e(TextButton, {
-				Text = "R$ " .. props.Price,
-				Variant = "primary",
-				BackgroundImage = "rbxassetid://137484194481753",
-				Size = UDim2.fromScale(0.994852, 0.131148),
-				Position = UDim2.fromScale(0.5, 0.934426),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				CornerRadius = UDim.new(0.1875, 0),
-				OnClick = props.OnPurchase or function() end,
-			})
-		else
-			e(ImageButton, {
-				Image = "rbxassetid://78588043183400",
-				Size = UDim2.fromScale(0.994852, 0.131148),
-				OnClick = props.OnPurchase or function() end,
-			}),
+		purchaseButton = e(TextButton, {
+			Text = (if isRobux then "R$ " else "") .. props.Price,
+			Variant = "primary",
+			Size = UDim2.fromScale(0.994852, 0.131148),
+			Position = UDim2.fromScale(0.5, 0.934426),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			CornerRadius = UDim.new(0.1875, 0),
+			OnClick = props.OnPurchase or function() end,
+		}),
 
 		price = e("TextLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),

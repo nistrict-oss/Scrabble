@@ -6,7 +6,8 @@ local e = React.createElement
 export type LeaderboardEntryProps = {
 	Username: string,
 	UserId: number?,
-	Wins: number,
+	StatName: string,
+	Stat: number,
 	LayoutOrder: number?,
 }
 
@@ -73,7 +74,7 @@ return function(props: LeaderboardEntryProps)
 			Position = UDim2.fromScale(0.921429, 0.2),
 			RichText = true,
 			Size = UDim2.fromScale(0.0785714, 0.6),
-			Text = "Wins",
+			Text = props.StatName,
 			TextColor3 = Color3.new(1, 1, 1),
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Right,
@@ -99,7 +100,7 @@ return function(props: LeaderboardEntryProps)
 			Position = UDim2.fromScale(0.824286, 0.2),
 			RichText = true,
 			Size = UDim2.fromScale(0.09, 0.6),
-			Text = tostring(props.Wins),
+			Text = tostring(props.Stat),
 			TextColor3 = Color3.new(1, 1, 1),
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Right,

@@ -10,6 +10,7 @@ local React = require(ReplicatedStorage.Packages.React)
 
 -- Load dictionary on client
 local ScrabbleDictionary = require(ReplicatedStorage.Shared.Modules.Game.ScrabbleDictionary)
+local ScrabbleConfig = require(ReplicatedStorage.Shared.Modules.Game.ScrabbleConfig)
 
 -- Initialize dictionary on load
 ScrabbleDictionary:init()
@@ -114,6 +115,7 @@ local function getWordFromPlacement(
 			score = 0,
 			touchesCenter = false,
 			error = nil,
+			multipliers = {},
 		}
 	end
 	
@@ -139,19 +141,21 @@ local function getWordFromPlacement(
 		local hasHorizontalNeighbor = (board[tile.row] and (board[tile.row][tile.col - 1] or board[tile.row][tile.col + 1]))
 		local hasVerticalNeighbor = (board[tile.row - 1] and board[tile.row - 1][tile.col]) or (board[tile.row + 1] and board[tile.row + 1][tile.col])
 		
+		direction = "across"
+
 		if hasHorizontalNeighbor then
 			direction = "across"
 		elseif hasVerticalNeighbor then
 			direction = "down"
-		else
-			direction = "across" -- default for first placement
 		end
 	end
 	
 	-- Build a lookup for placed tiles
 	local placedLookup = {}
+	local newTilesMap = {}
 	for _, tile in ipairs(placedTiles) do
 		placedLookup[tile.row .. "," .. tile.col] = tile.letter
+		newTilesMap[tile.row .. "," .. tile.col] = true
 	end
 	
 	-- Get letter at position (from board or placed tiles)
@@ -179,6 +183,7 @@ local function getWordFromPlacement(
 						score = 0,
 						touchesCenter = false,
 						error = "Tiles must be in a line",
+						multipliers = {},
 					}
 				end
 			end
@@ -192,6 +197,7 @@ local function getWordFromPlacement(
 						score = 0,
 						touchesCenter = false,
 						error = "No gaps allowed",
+						multipliers = {},
 					}
 				end
 			end
@@ -206,6 +212,7 @@ local function getWordFromPlacement(
 						score = 0,
 						touchesCenter = false,
 						error = "Tiles must be in a line",
+						multipliers = {},
 					}
 				end
 			end
@@ -219,6 +226,7 @@ local function getWordFromPlacement(
 						score = 0,
 						touchesCenter = false,
 						error = "No gaps allowed",
+						multipliers = {},
 					}
 				end
 			end
@@ -227,10 +235,34 @@ local function getWordFromPlacement(
 	
 	-- Build the main word
 	local mainWord = ""
+	local mainStartR, mainStartC = minRow, minCol
+	
 	if direction == "across" then
-		mainWord = getWordAt(minRow, minCol, "across", getLetterAt)
+		-- Find true start of word (could be before placed tiles)
+		local c = minCol
+		while c > 1 and getLetterAt(minRow, c - 1) do
+			c = c - 1
+		end
+		mainStartC = c
+		mainStartR = minRow
+		
+		while c <= 15 and getLetterAt(minRow, c) do
+			mainWord = mainWord .. getLetterAt(minRow, c)
+			c = c + 1
+		end
 	elseif direction == "down" then
-		mainWord = getWordAt(minRow, minCol, "down", getLetterAt)
+		-- Find true start of word
+		local r = minRow
+		while r > 1 and getLetterAt(r - 1, minCol) do
+			r = r - 1
+		end
+		mainStartR = r
+		mainStartC = minCol
+		
+		while r <= 15 and getLetterAt(r, minCol) do
+			mainWord = mainWord .. getLetterAt(r, minCol)
+			r = r + 1
+		end
 	end
 	
 	-- Check if any placed tile touches center (8,8)
@@ -244,7 +276,6 @@ local function getWordFromPlacement(
 	
 	-- On first move, word must touch center
 	local boardEmpty = isBoardEmpty(board)
-	local error: string? = nil
 	
 	if boardEmpty and not touchesCenter then
 		return {
@@ -254,6 +285,7 @@ local function getWordFromPlacement(
 			score = 0,
 			touchesCenter = touchesCenter,
 			error = "First word must touch the ★",
+			multipliers = {},
 		}
 	end
 	
@@ -288,6 +320,7 @@ local function getWordFromPlacement(
 				score = 0,
 				touchesCenter = false,
 				error = "Must connect to existing words",
+				multipliers = {},
 			}
 		end
 	end
@@ -301,11 +334,45 @@ local function getWordFromPlacement(
 			score = 0,
 			touchesCenter = touchesCenter,
 			error = mainWord .. " is not a word",
+			multipliers = {},
 		}
 	end
 	
+	-- Track active multipliers for display
+	local activeMultipliers = {}
+	
+	-- Scoring helper
+	local function calculateSegmentScore(word, startR, startC, dir)
+		local score = 0
+		local wordMult = 1
+		for i = 1, #word do
+			local r, c = startR, startC
+			if dir == "across" then c = startC + i - 1 else r = startR + i - 1 end
+			
+			local letter = string.sub(word, i, i)
+			local val = LETTER_VALUES[letter] or 0
+			
+			if newTilesMap[r .. "," .. c] then
+				local type = ScrabbleConfig.SPECIAL_POSITIONS[r .. "," .. c]
+				local m = type and ScrabbleConfig.MULTIPLIERS[type]
+				local lMult = m and m.letter or 1
+				local wMult = m and m.word or 1
+				
+				score = score + (val * lMult)
+				wordMult = wordMult * wMult
+				
+				if type then
+					table.insert(activeMultipliers, type)
+				end
+			else
+				score = score + val
+			end
+		end
+		return score * wordMult
+	end
+	
 	-- Calculate score for main word
-	local totalScore = calculateScore(mainWord)
+	local totalScore = calculateSegmentScore(mainWord, mainStartR, mainStartC, direction)
 	
 	-- Check all cross-words (perpendicular words formed by placed tiles)
 	local crossDir = if direction == "across" then "down" else "across"
@@ -313,17 +380,49 @@ local function getWordFromPlacement(
 	local invalidCrossWord = ""
 	
 	for _, tile in ipairs(placedTiles) do
-		local crossWord = getWordAt(tile.row, tile.col, crossDir, getLetterAt)
+		-- Only check cross words
+		local cwStartR, cwStartC, cwLen = tile.row, tile.col, 0
 		
-		-- Only validate cross-words that are more than 1 letter
-		if #crossWord > 1 then
-			if not isWordValid(crossWord) then
-				allWordsValid = false
-				invalidCrossWord = crossWord
-				break
+		if crossDir == "across" then
+			local c = tile.col
+			while c > 1 and getLetterAt(tile.row, c - 1) do c = c - 1 end
+			cwStartC = c
+			cwStartR = tile.row
+			local crossWord = ""
+			while c <= 15 and getLetterAt(tile.row, c) do
+				crossWord = crossWord .. getLetterAt(tile.row, c)
+				c = c + 1
 			end
-			-- Add cross-word score
-			totalScore = totalScore + calculateScore(crossWord)
+			cwLen = #crossWord
+			
+			if cwLen > 1 then
+				if not isWordValid(crossWord) then
+					allWordsValid = false
+					invalidCrossWord = crossWord
+					break
+				end
+				totalScore = totalScore + calculateSegmentScore(crossWord, cwStartR, cwStartC, crossDir)
+			end
+		else -- down
+			local r = tile.row
+			while r > 1 and getLetterAt(r - 1, tile.col) do r = r - 1 end
+			cwStartR = r
+			cwStartC = tile.col
+			local crossWord = ""
+			while r <= 15 and getLetterAt(r, tile.col) do
+				crossWord = crossWord .. getLetterAt(r, tile.col)
+				r = r + 1
+			end
+			cwLen = #crossWord
+			
+			if cwLen > 1 then
+				if not isWordValid(crossWord) then
+					allWordsValid = false
+					invalidCrossWord = crossWord
+					break
+				end
+				totalScore = totalScore + calculateSegmentScore(crossWord, cwStartR, cwStartC, crossDir)
+			end
 		end
 	end
 	
@@ -335,6 +434,7 @@ local function getWordFromPlacement(
 			score = 0,
 			touchesCenter = touchesCenter,
 			error = invalidCrossWord .. " is not a word",
+			multipliers = {},
 		}
 	end
 	
@@ -345,6 +445,7 @@ local function getWordFromPlacement(
 		score = totalScore,
 		touchesCenter = touchesCenter,
 		error = nil,
+		multipliers = activeMultipliers,
 	}
 end
 

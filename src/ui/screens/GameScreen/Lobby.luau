@@ -9,7 +9,9 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local React = require(ReplicatedStorage.Packages.React)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
 local ScrabbleServiceClient = require(ReplicatedStorage.Shared.Services.ScrabbleService.ScrabbleServiceClient)
 
@@ -24,6 +26,23 @@ export type LobbyProps = {
 
 return function(props: LobbyProps)
 	local lobby = props.LobbyState
+	local groupRef = React.useRef(nil :: CanvasGroup?)
+
+	-- Entrance Animation
+	React.useEffect(function()
+		local group = groupRef.current
+		if not group then return end
+
+		-- Parent TransitionFrame handles fade, we add a subtle slide up
+		local originalPos = UDim2.fromScale(0.5, 0.5)
+		group.Position = UDim2.new(0.5, 0, 0.5, 20)
+		group.GroupTransparency = 1
+		
+		TweenService:Create(group, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = originalPos,
+			GroupTransparency = 0
+		}):Play()
+	end, {})
 	
 	if not lobby then
 		return e("Frame", {
@@ -91,8 +110,8 @@ return function(props: LobbyProps)
 			UIPadding = e("UIPadding", {
 				PaddingBottom = UDim.new(0.1, 0),
 				PaddingTop = UDim.new(0.1, 0),
-				PaddingLeft = UDim.new(0.03, 0),
-				PaddingRight = UDim.new(0.03, 0),
+				PaddingLeft = UDim.new(0.05, 0),
+				PaddingRight = UDim.new(0.05, 0),
 			}),
 			
 			-- Avatar
@@ -152,12 +171,13 @@ return function(props: LobbyProps)
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 	})
 	
-	return e("Frame", {
+	return e("CanvasGroup", {
+		ref = groupRef,
 		Size = UDim2.fromScale(0.5, 0.7),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundColor3 = Color3.fromRGB(35, 55, 100),
-		ClipsDescendants = true,
+		GroupTransparency = 1, -- Animated
 	}, {
 		UICorner = e("UICorner", {
 			CornerRadius = UDim.new(0.02, 0),
@@ -171,14 +191,15 @@ return function(props: LobbyProps)
 		-- Header
 		Header = e("Frame", {
 			Size = UDim2.fromScale(1, 0.15),
-			BackgroundColor3 = Color3.fromRGB(249, 0, 149),
+			BackgroundColor3 = Color3.fromRGB(255,255,255),
 		}, {
-			UIGradient = e("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(249, 0, 149)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 2, 109)),
-				}),
+		UIGradient = e("UIGradient", {
+				Color = ColorSequence.new(GameConstants.Gradients.buttonActive),
 				Rotation = 90,
+			}),
+
+			UICorner = e("UICorner", {
+				CornerRadius = UDim.new(0.1, 0),
 			}),
 			
 			Title = e("TextLabel", {
@@ -242,7 +263,6 @@ return function(props: LobbyProps)
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 1,
 			ScrollBarThickness = 4,
-			ScrollBarImageColor3 = Color3.fromRGB(249, 0, 149),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			CanvasSize = UDim2.fromScale(0, 0),
 		}, playerEntries),

@@ -21,11 +21,24 @@ local SettingsScreen = require(ReplicatedStorage.UI.screens.HomeScreen.Settings)
 -- Game screen components
 local LobbyScreen = require(ReplicatedStorage.UI.screens.GameScreen.Lobby)
 local GameScreen = require(ReplicatedStorage.UI.screens.GameScreen.Game)
+local TransitionFrame = require(ReplicatedStorage.UI.components.frames.TransitionFrame)
 
 -- Scrabble state management
 local GameStateHook = require(ReplicatedStorage.UI.hooks.useGameState)
 local ScrabbleProvider = GameStateHook.ScrabbleProvider
 local useScrabbleState = GameStateHook.useScrabbleState
+
+local TAB_ORDER = {
+	"Servers",
+	"Shop",
+	"Customization",
+	"Leaderboards",
+	"Settings",
+}
+
+local function getTabIndex(tabName: string)
+	return table.find(TAB_ORDER, tabName) or 1
+end
 
 local e = React.createElement
 
@@ -34,94 +47,80 @@ local function AppContent()
 	local scrabbleState = useScrabbleState()
 	local activeTab, setActiveTab = React.useState("Servers")
 	
-	-- Determine which screen to show based on game state
 	local lobby = scrabbleState.lobby
 	local game = scrabbleState.game
-	
-	-- If we have an active game, show game screen
-	if game and game.Phase == "inGame" then
-		return e("ScreenGui", {
-			Enabled = true,
-			IgnoreGuiInset = true,
-			ResetOnSpawn = false,
-			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		}, {
-			GameScreen = e(GameScreen, {
-				GameState = game,
-				LobbyState = lobby,
-				OnLeave = function()
-					-- Will be handled by state update
-				end,
-			}),
-		})
+
+	-- Track tab history for sliding direction
+	local slideDirection, setSlideDirection = React.useState("Right")
+
+	local onTabChange = React.useCallback(function(newTab)
+		if newTab == activeTab then return end
+		
+		local prevIndex = getTabIndex(activeTab)
+		local currIndex = getTabIndex(newTab)
+		
+		setSlideDirection(if currIndex >= prevIndex then "Right" else "Left")
+		setActiveTab(newTab)
+	end, {activeTab})
+
+	-- Main Routing
+	local routingKey = "Home"
+	if game then
+		routingKey = "Game_" .. (game.Phase or "unknown")
+	elseif lobby then
+		routingKey = "Lobby"
 	end
-	
-	-- If we have game that ended, show result
-	if game and game.Phase == "ended" then
-		return e("ScreenGui", {
-			Enabled = true,
-			IgnoreGuiInset = true,
-			ResetOnSpawn = false,
-			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		}, {
-			GameScreen = e(GameScreen, {
-				GameState = game,
-				LobbyState = lobby,
-				OnLeave = function()
-					-- Will be handled by state update
-				end,
-			}),
+
+	-- Prepare Content
+	local mainContent = nil
+	local isGame = string.find(routingKey, "Game")
+	local isLobby = routingKey == "Lobby"
+
+	if isGame then
+		mainContent = e(GameScreen, {
+			GameState = game,
+			LobbyState = lobby,
+			OnLeave = function() end,
 		})
-	end
-	
-	-- If we're in a lobby, show lobby screen
-	if lobby then
-		return e("ScreenGui", {
-			Enabled = true,
-			IgnoreGuiInset = true,
-			ResetOnSpawn = false,
-			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		}, {
-			MainFrame = e("Frame", {
-				Size = UDim2.fromScale(1, 1),
-				BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-				BorderSizePixel = 0,
-			}, {
-				UIGradient = e("UIGradient", {
-					Rotation = 90,
-					Color = ColorSequence.new({
-						ColorSequenceKeypoint.new(0, Color3.fromRGB(88, 213, 245)),
-						ColorSequenceKeypoint.new(1, Color3.fromRGB(37, 204, 246)),
-					}),
-				}),
-				Background = e("ImageLabel", {
-					BackgroundTransparency = 1,
-					Image = "rbxassetid://78034675625122",
-					Position = UDim2.fromScale(-0.147917, -0.39537),
-					Size = UDim2.fromScale(1.50625, 2.24722),
-					ZIndex = 0,
-				}),
-				
-				LobbyScreen = e(LobbyScreen, {
-					LobbyState = lobby,
-					OnLeave = function()
-						-- Will be handled by state update
-					end,
-				}),
-			}),
-		})
-	end
-	
-	-- Default: Show home screens
-	return e("ScreenGui", {
-		Enabled = true,
-		IgnoreGuiInset = true,
-		ResetOnSpawn = false,
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-	}, {
-		MainFrame = e("Frame", {
+	elseif isLobby then
+		mainContent = e("Frame", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+			BorderSizePixel = 0,
+		}, {
+			UIGradient = e("UIGradient", {
+				Rotation = 90,
+				Color = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, Color3.fromRGB(88, 213, 245)),
+					ColorSequenceKeypoint.new(1, Color3.fromRGB(37, 204, 246)),
+				}),
+			}),
+			Background = e("ImageLabel", {
+				BackgroundTransparency = 1,
+				Image = "rbxassetid://78034675625122",
+				Position = UDim2.fromScale(-0.147917, -0.39537),
+				Size = UDim2.fromScale(1.50625, 2.24722),
+				ZIndex = 0,
+			}),
+			LobbyScreen = e(LobbyScreen, {
+				LobbyState = lobby,
+				OnLeave = function() end,
+			}),
+		})
+	else
+		-- Default: Show home screens with tab transitions
+		local tabContent = nil
+		if activeTab == "Servers" then tabContent = e(ServersScreen)
+		elseif activeTab == "Shop" then tabContent = e(ShopScreen)
+		elseif activeTab == "Customization" then tabContent = e(CustomizationScreen)
+		elseif activeTab == "Leaderboards" then tabContent = e(LeaderboardsScreen)
+		elseif activeTab == "Settings" then tabContent = e(SettingsScreen)
+		end
+
+		local headerHeight = 0.138889
+		mainContent = e("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 		}, {
 			UIGradient = e("UIGradient", {
@@ -141,16 +140,32 @@ local function AppContent()
 			
 			TopBar = e(TopBar, {
 				ActiveTab = activeTab,
-				OnTabChange = function(tabName)
-					setActiveTab(tabName)
-				end,
+				OnTabChange = onTabChange,
+				ZIndex = 11,
 			}),
-			Servers = activeTab == "Servers" and e(ServersScreen) or nil,
-			Shop = activeTab == "Shop" and e(ShopScreen) or nil,
-			Customization = activeTab == "Customization" and e(CustomizationScreen) or nil,
-			Leaderboards = activeTab == "Leaderboards" and e(LeaderboardsScreen) or nil,
-			Settings = activeTab == "Settings" and e(SettingsScreen) or nil,
-		}),
+			
+			TabTransition = e(TransitionFrame, {
+				TransitionKey = activeTab,
+				Duration = 0.4,
+				Type = "Slide",
+				Direction = slideDirection,
+				ZIndex = 10,
+				Position = UDim2.fromScale(0, headerHeight),
+				Size = UDim2.fromScale(1, 1 - headerHeight),
+			}, tabContent),
+		})
+	end
+
+	return e("ScreenGui", {
+		Enabled = true,
+		IgnoreGuiInset = true,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	}, {
+		ScreenTransition = e(TransitionFrame, {
+			TransitionKey = routingKey,
+			Type = "Fade",
+		}, mainContent)
 	})
 end
 

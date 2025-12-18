@@ -41,6 +41,49 @@ ScrabbleConfig.LETTERS = {
 	{ letter = "Z", count = 1, value = 10 },
 }
 
+-- Multiplier values
+ScrabbleConfig.MULTIPLIERS = {
+	TW = { word = 3, letter = 1 },
+	DW = { word = 2, letter = 1 },
+	TL = { word = 1, letter = 3 },
+	DL = { word = 1, letter = 2 },
+	CENTER = { word = 2, letter = 1 },
+}
+
+-- Standard Scrabble board special tile positions (1-indexed)
+ScrabbleConfig.SPECIAL_POSITIONS = {
+	-- Triple Word (corners and edges)
+	["1,1"] = "TW", ["1,8"] = "TW", ["1,15"] = "TW",
+	["8,1"] = "TW", ["8,15"] = "TW",
+	["15,1"] = "TW", ["15,8"] = "TW", ["15,15"] = "TW",
+	
+	-- Double Word (diagonal pattern)
+	["2,2"] = "DW", ["3,3"] = "DW", ["4,4"] = "DW", ["5,5"] = "DW",
+	["2,14"] = "DW", ["3,13"] = "DW", ["4,12"] = "DW", ["5,11"] = "DW",
+	["14,2"] = "DW", ["13,3"] = "DW", ["12,4"] = "DW", ["11,5"] = "DW",
+	["14,14"] = "DW", ["13,13"] = "DW", ["12,12"] = "DW", ["11,11"] = "DW",
+	
+	-- Triple Letter
+	["2,6"] = "TL", ["2,10"] = "TL",
+	["6,2"] = "TL", ["6,6"] = "TL", ["6,10"] = "TL", ["6,14"] = "TL",
+	["10,2"] = "TL", ["10,6"] = "TL", ["10,10"] = "TL", ["10,14"] = "TL",
+	["14,6"] = "TL", ["14,10"] = "TL",
+	
+	-- Double Letter
+	["1,4"] = "DL", ["1,12"] = "DL",
+	["3,7"] = "DL", ["3,9"] = "DL",
+	["4,1"] = "DL", ["4,8"] = "DL", ["4,15"] = "DL",
+	["7,3"] = "DL", ["7,7"] = "DL", ["7,9"] = "DL", ["7,13"] = "DL",
+	["8,4"] = "DL", ["8,12"] = "DL",
+	["9,3"] = "DL", ["9,7"] = "DL", ["9,9"] = "DL", ["9,13"] = "DL",
+	["12,1"] = "DL", ["12,8"] = "DL", ["12,15"] = "DL",
+	["13,7"] = "DL", ["13,9"] = "DL",
+	["15,4"] = "DL", ["15,12"] = "DL",
+	
+	-- Center
+	["8,8"] = "CENTER",
+}
+
 -- Build a fresh shuffled bag of tiles
 function ScrabbleConfig.buildBag()
 	local bag = {}

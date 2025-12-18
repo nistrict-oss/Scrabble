@@ -42,12 +42,31 @@ GameConstants.Colors = {
 	Orange = Color3.fromRGB(255, 165, 0),
 }
 
-GameConstants.Sounds = {
-
+GameConstants.Gradients = {
+	-- Pink gradient for active/selected buttons
+	buttonActive = {
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(254, 100, 192)),
+		ColorSequenceKeypoint.new(0.918269, Color3.fromRGB(206, 96, 162)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(202, 96, 159)),
+	},
+	-- Blue gradient for inactive/unselected buttons
+	buttonInactive = {
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(68, 210, 253)),
+		ColorSequenceKeypoint.new(0.89, Color3.fromRGB(62, 150, 227)),
+		ColorSequenceKeypoint.new(0.91, Color3.fromRGB(50, 142, 240)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 114, 233)),
+	},
+	-- Purple gradient for frames and panels
+	frame = {
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 99, 174)),
+		ColorSequenceKeypoint.new(0.89, Color3.fromRGB(90, 99, 174)),
+		ColorSequenceKeypoint.new(0.91, Color3.fromRGB(81, 88, 156)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(81, 88, 156)),
+	},
 }
 
-GameConstants.Volumes = {
-	
-}
+GameConstants.Sounds = {}
+
+GameConstants.Volumes = {}
 
 return GameConstants

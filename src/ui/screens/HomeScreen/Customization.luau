@@ -1,202 +1,135 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage.Packages.React)
-local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
+local StyledPanel = require(ReplicatedStorage.UI.components.frames.StyledPanel)
+local TabButton = require(ReplicatedStorage.UI.components.buttons.TabButton)
 local SkinCard = require(ReplicatedStorage.UI.components.cards.SkinCard)
 
 local e = React.createElement
 
-return function()
-	return React.createElement("Frame", {
-		BackgroundColor3 = Color3.new(1, 1, 1),
-		Position = UDim2.fromScale(0.0833333, 0.22037),
-		Size = UDim2.fromScale(0.833333, 0.699074),
-	}, {
-		uICorner = React.createElement("UICorner", {
-			CornerRadius = UDim.new(0.0264901, 0),
-		}),
-
-		uIGradient = React.createElement("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 99, 174)),
-				ColorSequenceKeypoint.new(0.97, Color3.fromRGB(90, 99, 174)),
-				ColorSequenceKeypoint.new(0.98, Color3.fromRGB(81, 88, 156)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(81, 88, 156)),
-			}),
-			Rotation = 90,
-			Transparency = NumberSequence.new({
-							NumberSequenceKeypoint.new(0, 0),
-							NumberSequenceKeypoint.new(0.97, 0),
-							NumberSequenceKeypoint.new(0.98, 0),
-							NumberSequenceKeypoint.new(1, 0),
-			}),
-		}),
-
-		uIStroke = React.createElement("UIStroke", {
-			Color = Color3.new(1, 1, 1),
-			Thickness = 5,
-		}),
-
-		background = React.createElement("ImageLabel", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Image = "rbxassetid://89383009044144",
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = 0,
-		}, {
-			uICorner = React.createElement("UICorner", {
-				CornerRadius = UDim.new(0.0264901, 0),
-			}),
-		}),
-
-		babiesButton = e(TextButton, {
+-- Helper function for tab buttons
+local function createTabButtons(tab, setTab)
+	return {
+		babiesButton = e(TabButton, {
 			Text = "Babies",
-			Variant = "primary",
-			BackgroundImage = "rbxassetid://130347638303988",
+			IsActive = tab == "Babies",
 			Size = UDim2.fromScale(0.478125, 0.0993377),
 			Position = UDim2.fromScale(0.015625, 0.0331126),
 			CornerRadius = UDim.new(0.133333, 0),
 			OnClick = function()
-				-- Handle babies tab click
+				setTab("Babies")
 			end,
 		}),
 
-		parentsButton = e(TextButton, {
+		parentsButton = e(TabButton, {
 			Text = "Parents",
-			Variant = "secondary",
-			BackgroundImage = "rbxassetid://125676755638326",
+			IsActive = tab == "Parents",
 			Size = UDim2.fromScale(0.478125, 0.0993377),
 			Position = UDim2.fromScale(0.50625, 0.0331126),
 			CornerRadius = UDim.new(0.133333, 0),
 			ZIndex = 2,
 			OnClick = function()
-				-- Handle parents tab click
+				setTab("Parents")
 			end,
 		}),
+	}
+end
 
-		uIAspectRatioConstraint = React.createElement("UIAspectRatioConstraint", {
-			AspectRatio = 2.11921,
+-- Helper function for scrolling skin content
+local function createSkinScrollingContent(visible, skins)
+	return React.createElement("ScrollingFrame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		AutomaticCanvasSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 1,
+		CanvasSize = UDim2.fromScale(0.807292, 0.568519),
+		Position = UDim2.fromScale(0.5, 0.566742),
+		ScrollBarThickness = 0,
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		Size = UDim2.fromScale(0.96875, 0.813245),
+		Visible = visible,
+		ZIndex = 0,
+	}, {
+		uIListLayout = React.createElement("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0.0129702, 0),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
 		}),
 
-		babiesx = React.createElement("ScrollingFrame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			AutomaticCanvasSize = Enum.AutomaticSize.XY,
-			BackgroundTransparency = 1,
-			CanvasSize = UDim2.fromScale(0.807292, 0.568519),
-			Position = UDim2.fromScale(0.5, 0.566742),
-			ScrollBarThickness = 0,
-			ScrollingDirection = Enum.ScrollingDirection.X,
-			Size = UDim2.fromScale(0.96875, 0.813245),
-			Visible = false,
-			ZIndex = 0,
-		}, {
-			skin1 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Rare",
-				IsEquipped = true,
-				Position = UDim2.fromScale(0.129032, 0.5),
-				LayoutOrder = 1,
-				OnEquip = function() end,
-			}),
-
-			skin2 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Rare",
-				IsEquipped = false,
-				Position = UDim2.fromScale(0.4, 0.5),
-				LayoutOrder = 2,
-				OnEquip = function() end,
-			}),
-
-			skin3 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Epic",
-				IsEquipped = false,
-				Position = UDim2.fromScale(0.670968, 0.5),
-				LayoutOrder = 3,
-				OnEquip = function() end,
-			}),
-
-			skin4 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Legendary",
-				IsEquipped = false,
-				Position = UDim2.fromScale(0.941936, 0.5),
-				LayoutOrder = 4,
-				OnEquip = function() end,
-			}),
-
-			uIListLayout = React.createElement("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal,
-				Padding = UDim.new(0.0129702, 0),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				VerticalAlignment = Enum.VerticalAlignment.Center,
-			}),
-
-			uIPadding = React.createElement("UIPadding", {
-				PaddingLeft = UDim.new(0.00259403, 0),
-				PaddingRight = UDim.new(0.00259403, 0),
-			}),
+		uIPadding = React.createElement("UIPadding", {
+			PaddingLeft = UDim.new(0.00259403, 0),
+			PaddingRight = UDim.new(0.00259403, 0),
 		}),
 
-		parentsx = React.createElement("ScrollingFrame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			AutomaticCanvasSize = Enum.AutomaticSize.XY,
-			BackgroundTransparency = 1,
-			CanvasSize = UDim2.fromScale(0.807292, 0.568519),
-			Position = UDim2.fromScale(0.5, 0.566742),
-			ScrollBarThickness = 0,
-			ScrollingDirection = Enum.ScrollingDirection.X,
-			Size = UDim2.fromScale(0.96875, 0.813245),
-			ZIndex = 0,
-		}, {
-			skin1 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Rare",
-				IsEquipped = true,
-				Position = UDim2.fromScale(0.129032, 0.5),
-				LayoutOrder = 1,
-				OnEquip = function() end,
-			}),
+		children = React.createElement(React.Fragment, nil, skins),
+	})
+end
 
-			skin2 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Rare",
-				IsEquipped = false,
-				Position = UDim2.fromScale(0.4, 0.5),
-				LayoutOrder = 2,
-				OnEquip = function() end,
-			}),
+-- Mock data
+local SKINS = {
+	Babies = {
+		{ Id = "b1", Name = "Baby Blue", Rarity = "Rare" },
+		{ Id = "b2", Name = "Baby Pink", Rarity = "Rare" },
+		{ Id = "b3", Name = "Baby Void", Rarity = "Epic" },
+		{ Id = "b4", Name = "Baby Gold", Rarity = "Legendary" },
+	},
+	Parents = {
+		{ Id = "p1", Name = "Parent Blue", Rarity = "Rare" },
+		{ Id = "p2", Name = "Parent Pink", Rarity = "Rare" },
+		{ Id = "p3", Name = "Parent Void", Rarity = "Epic" },
+		{ Id = "p4", Name = "Parent Gold", Rarity = "Legendary" },
+	},
+}
 
-			skin3 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Epic",
-				IsEquipped = false,
-				Position = UDim2.fromScale(0.670968, 0.5),
-				LayoutOrder = 3,
-				OnEquip = function() end,
-			}),
+return function()
+	local tab, setTab = React.useState("Parents")
+	local equippedBabies, setEquippedBabies = React.useState("b1")
+	local equippedParents, setEquippedParents = React.useState("p1")
 
-			skin4 = e(SkinCard, {
-				Name = "Skin Name",
-				Rarity = "Legendary",
-				IsEquipped = false,
-				Position = UDim2.fromScale(0.941936, 0.5),
-				LayoutOrder = 4,
-				OnEquip = function() end,
-			}),
+	local tabButtons = createTabButtons(tab, setTab)
 
-			uIListLayout = React.createElement("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal,
-				Padding = UDim.new(0.0129702, 0),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				VerticalAlignment = Enum.VerticalAlignment.Center,
-			}),
+	-- Generate Babies Skins
+	local babiesSkins = {}
+	for i, skin in ipairs(SKINS.Babies) do
+		babiesSkins[skin.Id] = e(SkinCard, {
+			Name = skin.Name,
+			Rarity = skin.Rarity,
+			IsEquipped = equippedBabies == skin.Id,
+			LayoutOrder = i,
+			OnEquip = function()
+				if equippedBabies == skin.Id then
+					setEquippedBabies(nil)
+				else
+					setEquippedBabies(skin.Id)
+				end
+			end,
+		})
+	end
 
-			uIPadding = React.createElement("UIPadding", {
-				PaddingLeft = UDim.new(0.00259403, 0),
-				PaddingRight = UDim.new(0.00259403, 0),
-			}),
-		}),
+	-- Generate Parents Skins
+	local parentsSkins = {}
+	for i, skin in ipairs(SKINS.Parents) do
+		parentsSkins[skin.Id] = e(SkinCard, {
+			Name = skin.Name,
+			Rarity = skin.Rarity,
+			IsEquipped = equippedParents == skin.Id,
+			LayoutOrder = i,
+			OnEquip = function()
+				if equippedParents == skin.Id then
+					setEquippedParents(nil)
+				else
+					setEquippedParents(skin.Id)
+				end
+			end,
+		})
+	end
+
+	return e(StyledPanel, {
+		AspectRatio = 2.11921,
+		Children = {
+			babiesButton = tabButtons.babiesButton,
+			parentsButton = tabButtons.parentsButton,
+			babiesx = createSkinScrollingContent(tab == "Babies", babiesSkins),
+			parentsx = createSkinScrollingContent(tab == "Parents", parentsSkins),
+		},
 	})
 end

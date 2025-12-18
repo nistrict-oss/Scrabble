@@ -40,9 +40,9 @@ function ScrabbleServiceClient:init()
 end
 
 -- Outbound actions
-function ScrabbleServiceClient:createLobby(name: string, maxPlayers: number, isPrivate: boolean, code: string?)
+function ScrabbleServiceClient:createLobby(name: string, maxPlayers: number, isPrivate: boolean, code: string?, turnTimer: number?)
 	if self.Networker then
-		self.Networker:fire("CreateLobby", name, maxPlayers, isPrivate, code)
+		self.Networker:fire("CreateLobby", name, maxPlayers, isPrivate, code, turnTimer)
 	end
 end
 
@@ -59,12 +59,8 @@ function ScrabbleServiceClient:leaveLobby()
 end
 
 function ScrabbleServiceClient:toggleReady()
-	print("[ScrabbleServiceClient] toggleReady called, Networker:", self.Networker ~= nil)
 	if self.Networker then
 		self.Networker:fire("ToggleReady")
-		print("[ScrabbleServiceClient] ToggleReady fired to server")
-	else
-		warn("[ScrabbleServiceClient] Networker is nil!")
 	end
 end
 
@@ -89,15 +85,24 @@ function ScrabbleServiceClient:passTurn()
 	end
 end
 
-function ScrabbleServiceClient:exchangeTiles(letters: { string })
-	if self.Networker then
-		self.Networker:fire("ExchangeTiles", letters)
-	end
+function ScrabbleServiceClient:exchangeTiles(exchangeData: { Letters: { string }, Indices: { number } })
+    if self.Networker then
+        self.Networker:fire("ExchangeTiles", {
+            Letters = exchangeData.Letters,
+            Indices = exchangeData.Indices
+        })
+    end
 end
 
 function ScrabbleServiceClient:resign()
 	if self.Networker then
 		self.Networker:fire("Resign")
+	end
+end
+
+function ScrabbleServiceClient:sendMessage(message: string)
+	if self.Networker then
+		self.Networker:fire("SendMessage", message)
 	end
 end
 
@@ -121,14 +126,11 @@ function ScrabbleServiceClient.LobbyList(self, lobbies: { LobbySummary })
 end
 
 function ScrabbleServiceClient.LobbyState(self, state: any)
-	print("[ScrabbleServiceClient] LobbyState received:", state and state.Id or "nil")
 	self.CurrentLobby = state
 	self.OnLobbyState:Fire(state)
 end
 
 function ScrabbleServiceClient.GameState(self, state: any)
-	print("[ScrabbleServiceClient] GameState received, Phase:", state and state.Phase or "nil")
-	
 	-- Reconstruct board from BoardTiles (network-safe format)
 	if state and state.BoardTiles then
 		local board = {}
@@ -146,7 +148,6 @@ function ScrabbleServiceClient.GameState(self, state: any)
 		end
 		
 		state.Board = board
-		print("[ScrabbleServiceClient] Reconstructed board with", #state.BoardTiles, "letters")
 	end
 	
 	self.CurrentGame = state

@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local React = require(ReplicatedStorage.Packages.React)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local ImageButton = require(ReplicatedStorage.UI.components.buttons.ImageButton)
 
 local e = React.createElement
@@ -37,6 +38,9 @@ return function(props)
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 0.138889),
+		Position = UDim2.fromScale(0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0),
+		ZIndex = props.ZIndex or 5, -- Default to a higher level
 	}, {
 		uIGradient = e("UIGradient", {
 			Color = ColorSequence.new({
@@ -46,6 +50,7 @@ return function(props)
 			Rotation = 90,
 		}),
 
+
 		background = e("ImageLabel", {
 			BackgroundTransparency = 1,
 			Image = "rbxassetid://94493965475122",
@@ -53,31 +58,11 @@ return function(props)
 			ZIndex = 0,
 		}),
 
-		userName = e("TextLabel", {
-			BackgroundTransparency = 1,
-			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.ExtraBold, Enum.FontStyle.Italic),
-			Position = UDim2.fromScale(0.220833, 0.386667),
-			RichText = true,
-			Size = UDim2.fromScale(0.0458333, 0.16),
-			Text = displayName,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextScaled = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			ZIndex = 2,
-		}, {
-			uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-				AspectRatio = 3.66667,
-			}),
-
-			uIPadding = e("UIPadding", {
-				PaddingBottom = UDim.new(0.166667, 0),
-			}),
-		}),
-
 		navigator = e("Frame", {
 			BackgroundColor3 = Color3.new(1, 1, 1),
-			Position = UDim2.fromScale(0.282292, 0.22),
-			Size = UDim2.fromScale(0.520833, 0.5),
+			Position = UDim2.fromScale(0.5, 0.22),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Size = UDim2.fromScale(0.6, 0.6),
 			ZIndex = 3,
 		}, {
 			uICorner = e("UICorner", {
@@ -85,19 +70,8 @@ return function(props)
 			}),
 
 			uIGradient = e("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 99, 174)),
-					ColorSequenceKeypoint.new(0.89, Color3.fromRGB(90, 99, 174)),
-					ColorSequenceKeypoint.new(0.91, Color3.fromRGB(81, 88, 156)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(81, 88, 156)),
-				}),
+				Color = ColorSequence.new(GameConstants.Gradients.frame),
 				Rotation = 90,
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0),
-					NumberSequenceKeypoint.new(0.89, 0),
-					NumberSequenceKeypoint.new(0.91, 0),
-					NumberSequenceKeypoint.new(1, 0),
-				}),
 			}),
 
 			UIStroke = e("UIStroke", {
@@ -172,19 +146,8 @@ return function(props)
 			}),
 
 			uIGradient = e("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 99, 174)),
-					ColorSequenceKeypoint.new(0.89, Color3.fromRGB(90, 99, 174)),
-					ColorSequenceKeypoint.new(0.91, Color3.fromRGB(81, 88, 156)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(81, 88, 156)),
-				}),
+				Color = ColorSequence.new(GameConstants.Gradients.frame),
 				Rotation = 90,
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0),
-					NumberSequenceKeypoint.new(0.89, 0),
-					NumberSequenceKeypoint.new(0.91, 0),
-					NumberSequenceKeypoint.new(1, 0),
-				}),
 			}),
 
 			uIStroke = e("UIStroke", {
@@ -227,8 +190,9 @@ return function(props)
 
 		pFP = e("Frame", {
 			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.155729, 0.133333),
-			Size = UDim2.fromScale(0.0520833, 0.666667),
+			Position = UDim2.fromScale(0.07, 0.133333),
+			AnchorPoint = Vector2.new(0.07, 0),
+			Size = UDim2.fromScale(0.05, 0.6),
 		}, {
 			userProfileBackground = e("Frame", {
 				BackgroundColor3 = Color3.fromRGB(2, 181, 221),
@@ -252,6 +216,28 @@ return function(props)
 			}, {
 				uICorner = e("UICorner", {
 					CornerRadius = UDim.new(1, 0),
+				}),
+			}),
+
+			userName = e("TextLabel", {
+				BackgroundTransparency = 1,
+				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.ExtraBold, Enum.FontStyle.Italic),
+				Position = UDim2.fromScale(1.1, 0.5),
+				AnchorPoint = Vector2.new(0, 0.5),
+				RichText = true,
+				Size = UDim2.fromScale(1,1),
+				Text = displayName,
+				TextColor3 = Color3.new(1, 1, 1),
+				TextScaled = true,
+				TextYAlignment = Enum.TextYAlignment.Top,
+				ZIndex = 2,
+			}, {
+				uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
+					AspectRatio = 3.66667,
+				}),
+	
+				uIPadding = e("UIPadding", {
+					PaddingBottom = UDim.new(0.166667, 0),
 				}),
 			}),
 

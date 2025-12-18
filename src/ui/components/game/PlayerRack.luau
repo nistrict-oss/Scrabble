@@ -253,36 +253,15 @@ return function(props: PlayerRackProps)
 			ClipsDescendants = false,
 		}, tiles),
 		
-		-- Disabled overlay
-		DisabledOverlay = isDisabled and e("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundColor3 = Color3.new(0, 0, 0),
-			BackgroundTransparency = 0.5,
-			ZIndex = 10,
-		}, {
-			UICorner = e("UICorner", {
-				CornerRadius = UDim.new(0.1, 0),
-			}),
-			
-			Label = e("TextLabel", {
-				Size = UDim2.fromScale(1, 1),
-				BackgroundTransparency = 1,
-				Text = "Waiting for your turn...",
-				TextColor3 = Color3.new(1, 1, 1),
-				TextScaled = true,
-				FontFace = Font.new(
-					"rbxassetid://11702779517",
-					Enum.FontWeight.Bold,
-					Enum.FontStyle.Italic
-				),
-			}, {
-				UIPadding = e("UIPadding", {
-					PaddingBottom = UDim.new(0.25, 0),
-					PaddingTop = UDim.new(0.25, 0),
-					PaddingLeft = UDim.new(0.1, 0),
-					PaddingRight = UDim.new(0.1, 0),
-				}),
-			}),
+		-- Strategy indicator (Optional: Could add a subtle text saying "Planning Mode")
+		StrategyHint = isDisabled and e("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 15),
+			Position = UDim2.new(0, 0, 0, -18),
+			BackgroundTransparency = 1,
+			Text = "Planning Mode - Strategy Only",
+			TextColor3 = Color3.fromRGB(150, 150, 180),
+			TextSize = 10,
+			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Italic),
 		}) or nil,
 	})
 end

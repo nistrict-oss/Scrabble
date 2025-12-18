@@ -1,3 +1,6 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local BANNED_WORDS = require(ReplicatedStorage.Shared.Modules.Game.ScrabbleDictionary.BannedWords)
+
 local ScrabbleDictionary = {
 	Dictionary = nil :: { [string]: boolean }?,
 	Initialized = false,
@@ -18,8 +21,10 @@ function ScrabbleDictionary:init()
 	
 	if success1 and words1 then
 		for word, val in pairs(words1) do
-			self.Dictionary[word] = val
-			totalCount = totalCount + 1
+            if not BANNED_WORDS[string.lower(word)] then
+			    self.Dictionary[word] = val
+			    totalCount = totalCount + 1
+            end
 		end
 	else
 		warn("[ScrabbleDictionary] Failed to load Words module:", words1)
@@ -32,14 +37,15 @@ function ScrabbleDictionary:init()
 	
 	if success2 and words2 then
 		for word, val in pairs(words2) do
-			self.Dictionary[word] = val
-			totalCount = totalCount + 1
+            if not BANNED_WORDS[string.lower(word)] then
+			    self.Dictionary[word] = val
+			    totalCount = totalCount + 1
+            end
 		end
 	else
 		warn("[ScrabbleDictionary] Failed to load Words2 module:", words2)
 	end
 	
-	print("[ScrabbleDictionary] Loaded", totalCount, "words")
 	self.Initialized = true
 end
 

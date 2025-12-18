@@ -40,7 +40,7 @@ return function(props: LetterTileProps)
 	
 	-- Bouncy spring animation function
 	local function animateScale(targetScale)
-		if isDisabled or not frameRef.current then return end
+		if not frameRef.current then return end
 		
 		local tweenInfo = TweenInfo.new(
 			0.45,
@@ -58,14 +58,12 @@ return function(props: LetterTileProps)
 	end
 	
 	local function handleClick()
-		if isDisabled then return end
 		if props.OnClick then
 			props.OnClick(props.Index, letter)
 		end
 	end
 	
 	local function handleMouseDown()
-		if isDisabled then return end
 		animateScale(0.88)
 		
 		-- Only start drag if OnDragStart is provided
@@ -75,7 +73,6 @@ return function(props: LetterTileProps)
 	end
 	
 	local function handleMouseUp()
-		if isDisabled then return end
 		animateScale(1.15)
 	end
 	
@@ -131,11 +128,9 @@ return function(props: LetterTileProps)
 		AutoButtonColor = false,
 		[React.Event.Activated] = handleClick,
 		[React.Event.MouseEnter] = function()
-			if isDisabled then return end
 			animateScale(1.12)
 		end,
 		[React.Event.MouseLeave] = function()
-			if isDisabled then return end
 			animateScale(1)
 		end,
 		[React.Event.MouseButton1Down] = handleMouseDown,
@@ -158,6 +153,7 @@ return function(props: LetterTileProps)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				BackgroundColor3 = tileColor,
+				BackgroundTransparency = if isDisabled then 0.2 else 0,
 				ClipsDescendants = true,
 			}, {
 				UICorner = e("UICorner", {

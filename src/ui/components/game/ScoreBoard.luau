@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage.Packages.React)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 
 local e = React.createElement
 
@@ -14,6 +15,7 @@ export type PlayerScore = {
 	Name: string,
 	Score: number,
 	IsCurrentTurn: boolean,
+	TimeRemaining: number?, -- seconds
 }
 
 export type ScoreBoardProps = {
@@ -63,7 +65,7 @@ return function(props: ScoreBoardProps)
 			}) or nil,
 			
 			Name = e("TextLabel", {
-				Size = UDim2.fromScale(0.6, 1),
+				Size = UDim2.fromScale(0.6, if player.TimeRemaining then 0.6 else 1),
 				Position = UDim2.fromScale(0.1, 0),
 				BackgroundTransparency = 1,
 				Text = player.Name,
@@ -76,13 +78,30 @@ return function(props: ScoreBoardProps)
 					Enum.FontStyle.Normal
 				),
 			}),
+
+			TimeRemaining = player.TimeRemaining and e("TextLabel", {
+				Size = UDim2.fromScale(0.4, 0.4),
+				Position = UDim2.fromScale(0.1, 0.55),
+				BackgroundTransparency = 1,
+				Text = if player.TimeRemaining >= 3600 
+					then string.format("%d:%02d:%02d", math.floor(player.TimeRemaining / 3600), math.floor((player.TimeRemaining % 3600) / 60), player.TimeRemaining % 60)
+					else string.format("%d:%02d", math.floor(player.TimeRemaining / 60), player.TimeRemaining % 60),
+				TextColor3 = if player.IsCurrentTurn then Color3.new(1, 1, 1) else Color3.fromRGB(200, 200, 220),
+				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				FontFace = Font.new(
+					"rbxassetid://11702779517",
+					Enum.FontWeight.Medium,
+					Enum.FontStyle.Normal
+				),
+			}) or nil,
 			
 			Score = e("TextLabel", {
 				Size = UDim2.fromScale(0.3, 1),
 				Position = UDim2.fromScale(0.7, 0),
 				BackgroundTransparency = 1,
 				Text = tostring(player.Score),
-				TextColor3 = Color3.fromRGB(249, 0, 149), -- Pink accent
+				TextColor3 = if player.IsCurrentTurn then Color3.new(1, 1, 1) else Color3.fromRGB(249, 0, 149),
 				TextScaled = true,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				FontFace = Font.new(
@@ -102,8 +121,7 @@ return function(props: ScoreBoardProps)
 	
 	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(35, 55, 100),
-		ClipsDescendants = true,
+		BackgroundColor3 = Color3.fromRGB(30, 45, 90), -- Match GameBoard
 	}, {
 		UICorner = e("UICorner", {
 			CornerRadius = UDim.new(0.05, 0),
@@ -134,11 +152,22 @@ return function(props: ScoreBoardProps)
 			),
 		}),
 		
-		PlayerList = e("Frame", {
+		PlayerList = e("ScrollingFrame", {
 			Size = UDim2.new(1, 0, 1, -70),
 			Position = UDim2.fromOffset(0, 35),
 			BackgroundTransparency = 1,
-		}, entries),
+			ScrollBarThickness = 2,
+			ScrollBarImageColor3 = Color3.fromRGB(249, 0, 149),
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		}, entries, {
+			UIPadding = e("UIPadding", {
+				PaddingBottom = UDim.new(0.03, 0),
+				PaddingTop = UDim.new(0.03, 0),
+				PaddingLeft = UDim.new(0.05, 0),
+				PaddingRight = UDim.new(0.05, 0),
+			}),
+		}),
 		
 		TilesRemaining = e("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 25),

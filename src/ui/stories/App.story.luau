@@ -6,6 +6,7 @@ local App = require(ReplicatedStorage.UI.App)
 return function(target)
 	local root = ReactRoblox.createRoot(target)
 	root:render(React.createElement(App))
+
 	return function()
 		root:unmount()
 	end

@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage.Packages.React)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local ImageButton = require(ReplicatedStorage.UI.components.buttons.ImageButton)
 local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
 
@@ -23,7 +24,7 @@ return function(props: ServerEntryProps)
 
 	return e("Frame", {
 		BackgroundColor3 = Color3.new(1, 1, 1),
-		Size = UDim2.fromScale(0.997426, 0.155),
+		Size = UDim2.fromScale(1, 0.15),
 		LayoutOrder = props.LayoutOrder,
 		ZIndex = 0,
 	}, {
@@ -31,20 +32,13 @@ return function(props: ServerEntryProps)
 			CornerRadius = UDim.new(0.09875, 0),
 		}),
 
+		UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
+			AspectRatio = 10,
+		}),
+
 		uIGradient = e("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 99, 174)),
-				ColorSequenceKeypoint.new(0.94, Color3.fromRGB(90, 99, 174)),
-				ColorSequenceKeypoint.new(0.95, Color3.fromRGB(81, 88, 156)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(81, 88, 156)),
-			}),
+			Color = ColorSequence.new(GameConstants.Gradients.frame),
 			Rotation = 90,
-			Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0),
-				NumberSequenceKeypoint.new(0.94, 0),
-				NumberSequenceKeypoint.new(0.95, 0),
-				NumberSequenceKeypoint.new(1, 0),
-			}),
 		}),
 
 		uIStroke = e("UIStroke", {
@@ -64,7 +58,7 @@ return function(props: ServerEntryProps)
 			Position = UDim2.fromScale(0.0129032, 0.0658333),
 			Size = UDim2.fromScale(0.0516129, 0.855833),
 		}, {
-			pFP = e("Frame", {
+			userPFP = e("Frame", {
 				BackgroundTransparency = 1,
 				Position = UDim2.fromScale(0, 0.192308),
 				Size = UDim2.fromScale(1, 0.615385),
@@ -84,9 +78,15 @@ return function(props: ServerEntryProps)
 					BackgroundTransparency = 1,
 					Image = thumbnailUrl,
 					Size = UDim2.fromScale(1, 1),
+					ScaleType = Enum.ScaleType.Fit,
+					ImageColor3 = Color3.fromRGB(2, 181, 221),
 				}, {
 					uICorner = e("UICorner", {
 						CornerRadius = UDim.new(1, 0),
+					}),
+					uIStroke = e("UIStroke", {
+						Color = Color3.new(1, 1, 1),
+						Thickness = 2,
 					}),
 				}),
 			}),
@@ -158,47 +158,27 @@ return function(props: ServerEntryProps)
 			Variant = "primary",
 			BackgroundImage = "rbxassetid://71123294591402",
 			Size = UDim2.fromScale(0.10737, 0.822917),
-			Position = UDim2.fromScale(0.79871, 0.0855833),
+			Position = UDim2.fromScale(0.88, 0.0855833),
 			CornerRadius = UDim.new(0.08, 0),
 			ZIndex = 2,
 			OnClick = props.OnJoin or function() end,
 		}),
 
-		spectate = e("Frame", {
+		spectate = e(TextButton, {
 			BackgroundColor3 = Color3.new(1, 1, 1),
-			Position = UDim2.fromScale(0.708387, 0.0855833),
-			Size = UDim2.fromScale(0.0806452, 0.822917),
-			ZIndex = 3,
+			Position = UDim2.fromScale(0.76387, 0.0855833),
+			BackgroundImage = "rbxassetid://71123294591402",
+			Size = UDim2.fromScale(0.10737, 0.822917),
+			CornerRadius = UDim.new(0.08, 0),
+			ZIndex = 2,
+			Text = "Spectate",
+			Variant = "secondary",
+			OnClick = props.OnSpectate or function() end,
 		}, {
-			uICorner = e("UICorner", {
-				CornerRadius = UDim.new(0.08, 0),
-			}),
-
-			uIGradient = e("UIGradient", {
-				Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 174, 249)),
-					ColorSequenceKeypoint.new(0.918269, Color3.fromRGB(0, 174, 249)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(2, 133, 180)),
-				}),
-				Rotation = 90,
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0),
-					NumberSequenceKeypoint.new(0.918269, 0),
-					NumberSequenceKeypoint.new(1, 0),
-				}),
-			}),
 
 			uIStroke = e("UIStroke", {
 				Color = Color3.new(1, 1, 1),
 				Thickness = 2,
-			}),
-
-			background = e("ImageLabel", {
-				BackgroundTransparency = 1,
-				Image = "rbxassetid://113489111575835",
-				Position = UDim2.fromScale(-0.08, -0.08),
-				Size = UDim2.fromScale(1.16, 1.16),
-				ZIndex = 0,
 			}),
 
 			eyeUnselected = e("ImageLabel", {
@@ -206,12 +186,6 @@ return function(props: ServerEntryProps)
 				Image = "rbxassetid://84735663475952",
 				Position = UDim2.fromScale(0.264, 0.264),
 				Size = UDim2.fromScale(0.48, 0.48),
-			}),
-
-			spectateButton = e(ImageButton, {
-				Image = "rbxassetid://134439409633127",
-				Size = UDim2.fromScale(1, 1),
-				OnClick = props.OnSpectate or function() end,
 			}),
 		}),
 

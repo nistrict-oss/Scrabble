@@ -14,6 +14,7 @@ export type WordValidationDisplayProps = {
 	IsValid: boolean,
 	Score: number,
 	Direction: "across" | "down" | "none",
+	Multipliers: { string }?,
 	Error: string?,
 }
 
@@ -23,7 +24,7 @@ return function(props: WordValidationDisplayProps)
 	local score = props.Score or 0
 	local direction = props.Direction or "none"
 	local errorMsg = props.Error
-	
+	local multipliers = props.Multipliers or {}
 	if #word == 0 then
 		return e("Frame", {
 			Size = UDim2.fromScale(1, 1),
@@ -57,6 +58,9 @@ return function(props: WordValidationDisplayProps)
 	local statusText
 	if isValid then
 		statusText = word .. " (" .. score .. " pts)"
+		if #multipliers > 0 then
+			statusText = statusText .. " • " .. table.concat(multipliers, ", ")
+		end
 	elseif errorMsg then
 		statusText = errorMsg
 	else

@@ -64,9 +64,8 @@ return function(props: SkinCardProps)
 		}),
 
 		equipButton = e(TextButton, {
-			Text = if isEquipped then "Equipped" else "Equip",
-			Variant = if isEquipped then "primary" else "secondary",
-			BackgroundImage = if isEquipped then "rbxassetid://82297622884522" else "rbxassetid://137311948105773",
+			Text = if isEquipped then "Unequip" else "Equip",
+			Variant = if isEquipped then "secondary" else "primary",
 			Size = UDim2.fromScale(0.994839, 0.131148),
 			Position = UDim2.fromScale(0.5, 0.934426),
 			AnchorPoint = Vector2.new(0.5, 0.5),

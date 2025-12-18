@@ -7,6 +7,7 @@
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ScrabbleConfig = require(ReplicatedStorage.Shared.Modules.Game.ScrabbleConfig)
 local React = require(ReplicatedStorage.Packages.React)
 
 local e = React.createElement
@@ -18,40 +19,6 @@ local SPECIAL_TILES = {
 	TL = { label = "3L", color = Color3.fromRGB(72, 156, 232), textColor = Color3.new(1, 1, 1) }, -- Triple Letter
 	DL = { label = "2L", color = Color3.fromRGB(166, 213, 255), textColor = Color3.fromRGB(50, 50, 50) }, -- Double Letter
 	CENTER = { label = "★", color = Color3.fromRGB(255, 166, 201), textColor = Color3.new(1, 1, 1) }, -- Center star
-}
-
--- Standard Scrabble board special tile positions (1-indexed)
-local SPECIAL_POSITIONS = {
-	-- Triple Word (corners and edges)
-	["1,1"] = "TW", ["1,8"] = "TW", ["1,15"] = "TW",
-	["8,1"] = "TW", ["8,15"] = "TW",
-	["15,1"] = "TW", ["15,8"] = "TW", ["15,15"] = "TW",
-	
-	-- Double Word (diagonal pattern)
-	["2,2"] = "DW", ["3,3"] = "DW", ["4,4"] = "DW", ["5,5"] = "DW",
-	["2,14"] = "DW", ["3,13"] = "DW", ["4,12"] = "DW", ["5,11"] = "DW",
-	["14,2"] = "DW", ["13,3"] = "DW", ["12,4"] = "DW", ["11,5"] = "DW",
-	["14,14"] = "DW", ["13,13"] = "DW", ["12,12"] = "DW", ["11,11"] = "DW",
-	
-	-- Triple Letter
-	["2,6"] = "TL", ["2,10"] = "TL",
-	["6,2"] = "TL", ["6,6"] = "TL", ["6,10"] = "TL", ["6,14"] = "TL",
-	["10,2"] = "TL", ["10,6"] = "TL", ["10,10"] = "TL", ["10,14"] = "TL",
-	["14,6"] = "TL", ["14,10"] = "TL",
-	
-	-- Double Letter
-	["1,4"] = "DL", ["1,12"] = "DL",
-	["3,7"] = "DL", ["3,9"] = "DL",
-	["4,1"] = "DL", ["4,8"] = "DL", ["4,15"] = "DL",
-	["7,3"] = "DL", ["7,7"] = "DL", ["7,9"] = "DL", ["7,13"] = "DL",
-	["8,4"] = "DL", ["8,12"] = "DL",
-	["9,3"] = "DL", ["9,7"] = "DL", ["9,9"] = "DL", ["9,13"] = "DL",
-	["12,1"] = "DL", ["12,8"] = "DL", ["12,15"] = "DL",
-	["13,7"] = "DL", ["13,9"] = "DL",
-	["15,4"] = "DL", ["15,12"] = "DL",
-	
-	-- Center
-	["8,8"] = "CENTER",
 }
 
 -- Letter point values
@@ -87,7 +54,7 @@ return function(props: BoardTileProps)
 	local isDragHover = props.IsDragHover
 	
 	local posKey = row .. "," .. col
-	local specialType = SPECIAL_POSITIONS[posKey]
+	local specialType = ScrabbleConfig.SPECIAL_POSITIONS[posKey]
 	local special = specialType and SPECIAL_TILES[specialType]
 	
 	-- Determine background color
@@ -140,12 +107,53 @@ return function(props: BoardTileProps)
 		end
 	end
 	
+	-- Animation state
+	local buttonRef = React.useRef(nil)
+	
+	React.useEffect(function()
+		if letter and buttonRef.current then
+			local uiScale = buttonRef.current:FindFirstChild("UIScale")
+			if uiScale then
+				if isPreview then
+					-- Preview animation: Instant pop
+					uiScale.Scale = 1.3
+					local TweenService = game:GetService("TweenService")
+					TweenService:Create(uiScale, TweenInfo.new(0.3, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {
+						Scale = 1,
+					}):Play()
+				else
+					-- Confirmed tile animation: Wave effect
+					-- Ensure starts invisible
+					uiScale.Scale = 0
+					
+					-- Wave calculation: Center-Out (distance from 8,8)
+					-- This ensures the game start (center) is instant, and waves flow outward
+					local dist = math.abs(row - 8) + math.abs(col - 8)
+					local delay = dist * 0.25
+					
+					task.delay(delay, function()
+						if not buttonRef.current then return end
+						-- Pop in
+						uiScale.Scale = 1.3
+						local TweenService = game:GetService("TweenService")
+						TweenService:Create(uiScale, TweenInfo.new(0.7, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {
+							Scale = 1,
+						}):Play()
+					end)
+				end
+			end
+		end
+	end, { letter })
+	
 	return e("TextButton", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = bgColor,
 		BorderSizePixel = 0,
 		Text = "",
 		AutoButtonColor = false,
+		ref = buttonRef,
 		[React.Event.Activated] = handleClick,
 		[React.Event.MouseButton1Down] = handleMouseDown,
 		[React.Event.MouseButton1Up] = handleMouseUp,
@@ -160,6 +168,11 @@ return function(props: BoardTileProps)
 			end
 		end,
 	}, {
+		UIScale = e("UIScale", {
+			-- Start invisible for wave animation, visible otherwise
+			Scale = if letter and not isPreview then 0 else 1,
+		}),
+		
 		UICorner = e("UICorner", {
 			CornerRadius = UDim.new(0.15, 0),
 		}),

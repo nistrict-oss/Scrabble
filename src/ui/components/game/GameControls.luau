@@ -41,6 +41,10 @@ return function(props: GameControlsProps)
 				HorizontalAlignment = Enum.HorizontalAlignment.Center,
 				VerticalAlignment = Enum.VerticalAlignment.Center,
 			}),
+
+			UIPadding = e("UIPadding", {
+				PaddingBottom = UDim.new(0.3, 0),
+			}),
 			
 			Instruction = e("Frame", {
 				Size = UDim2.fromScale(0.35, 0.8),
@@ -102,6 +106,10 @@ return function(props: GameControlsProps)
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 		}),
+
+		UIPadding = e("UIPadding", {
+			PaddingBottom = UDim.new(0.3, 0),
+		}),
 		
 		ClearButton = e("Frame", {
 			Size = UDim2.fromScale(0.22, 0.8),
@@ -112,7 +120,7 @@ return function(props: GameControlsProps)
 				Text = "Clear",
 				Variant = "secondary",
 				Size = UDim2.fromScale(1, 1),
-				Disabled = not isMyTurn,
+				-- Always allow clearing strategic placements
 				OnClick = props.OnClear,
 			}),
 		}),
