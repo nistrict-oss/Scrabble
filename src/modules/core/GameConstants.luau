@@ -65,8 +65,72 @@ GameConstants.Gradients = {
 	},
 }
 
-GameConstants.Sounds = {}
+GameConstants.SOUNDS = {
+	-- Input/Typing
+	TYPING = "rbxassetid://11902740060",
 
-GameConstants.Volumes = {}
+	-- UI Interactions
+	BUTTON_CLICK = "rbxassetid://5852470908",
+	BUTTON_HOVER = "rbxassetid://6895079853",
+	WOOSH = "rbxassetid://117297744119258", -- Woosh/swoosh for UI animations
+	STREAK = "rbxassetid://7978512412", -- Streak milestone sound
+
+	-- Gameplay feedback
+	CORRECT_ANSWER = "rbxassetid://128170212983132", -- Correct answer chime
+	WRONG_ANSWER = "rbxassetid://83517496538471", -- Wrong answer buzzer
+	LIFE_LOST = "rbxassetid://9116795681", -- Losing a life
+	VICTORY = "rbxassetid://1846266692", -- Winning the game
+	DEFEAT = "rbxassetid://1846266716", -- Losing/eliminated
+
+	-- Spin/Styles
+	SPIN_WIN = "rbxassetid://17208361335",
+	SPIN_WIN_RARE = "rbxassetid://8486683243", -- Epic/Legendary/Mathematic rarity
+
+	-- Purchases
+	PURCHASE_SUCCESS = "rbxassetid://10066947742",
+
+	-- Tiles
+	TILE_POP = "rbxassetid://6586979979",
+
+	-- Chat
+	CHAT_NOTIFICATION = "rbxassetid://18202483174",
+
+	-- Score
+	SCORE_COLLECT = "rbxassetid://97873131181477",
+}
+
+GameConstants.VOLUMES = {
+	-- UI Interactions
+	BUTTON_CLICK = 0.5,
+	BUTTON_HOVER = 0.5,
+	WOOSH = 0.6,
+	STREAK = 0.7,
+
+	-- Typing
+	TYPING = 0.8,
+
+	-- Gameplay feedback
+	CORRECT_ANSWER = 0.7,
+	WRONG_ANSWER = 0.6,
+	LIFE_LOST = 0.7,
+	VICTORY = 0.8,
+	DEFEAT = 0.7,
+
+	-- Spin/Styles
+	SPIN_WIN = 0.7,
+	SPIN_WIN_RARE = 0.8,
+
+	-- Purchases
+	PURCHASE_SUCCESS = 0.8,
+
+	-- Tiles
+	TILE_POP = 0.7,
+
+	-- Chat
+	CHAT_NOTIFICATION = 0.6,
+
+	-- Score
+	SCORE_COLLECT = 1,
+}
 
 return GameConstants

@@ -7,12 +7,14 @@ local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
 local e = React.createElement
 
 export type ServerEntryProps = {
+	LobbyName: string?,
 	HostName: string,
 	HostUserId: number?,
 	PlayerCount: number,
 	MaxPlayers: number,
 	IsPrivate: boolean?,
 	LayoutOrder: number?,
+	Phase: string?,
 	OnJoin: (() -> ())?,
 	OnSpectate: (() -> ())?,
 }
@@ -55,8 +57,8 @@ return function(props: ServerEntryProps)
 
 		host = e("Frame", {
 			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.0129032, 0.0658333),
-			Size = UDim2.fromScale(0.0516129, 0.855833),
+			Position = UDim2.fromScale(0.02, 0.01),
+			Size = UDim2.fromScale(0.06, 0.98),
 		}, {
 			userPFP = e("Frame", {
 				BackgroundTransparency = 1,
@@ -94,12 +96,13 @@ return function(props: ServerEntryProps)
 			hostName = e("TextLabel", {
 				BackgroundTransparency = 1,
 				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.ExtraBold, Enum.FontStyle.Italic),
-				Position = UDim2.fromScale(0.0625, 0.846154),
+				Position = UDim2.fromScale(1.1, 0.5),
 				RichText = true,
-				Size = UDim2.fromScale(0.8875, 0.153846),
-				Text = props.HostName,
-				TextColor3 = Color3.new(1, 1, 1),
+				Size = UDim2.fromScale(4, 0.3),
+				Text = "Host: " .. props.HostName,
+				TextColor3 = Color3.fromRGB(200, 200, 200),
 				TextScaled = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
 			}, {
 				uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
 					AspectRatio = 3.55,
@@ -111,60 +114,52 @@ return function(props: ServerEntryProps)
 				}),
 			}),
 
-			hostLabel = e("TextLabel", {
+			lobbyName = e("TextLabel", {
 				BackgroundTransparency = 1,
-				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.ExtraBold, Enum.FontStyle.Normal),
-				Position = UDim2.fromScale(0.25, 0),
+				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Normal),
+				Position = UDim2.fromScale(1.1, 0.1),
 				RichText = true,
-				Size = UDim2.fromScale(0.5, 0.153846),
-				Text = "Host",
-				TextColor3 = Color3.new(1, 1, 1),
-				TextScaled = true,
-				ZIndex = 2,
-			}, {
-				uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-					AspectRatio = 2,
-				}),
-
-				uIPadding = e("UIPadding", {
-					PaddingBottom = UDim.new(0.1, 0),
-					PaddingTop = UDim.new(0.1, 0),
-				}),
-			}),
-
-			lock = props.IsPrivate and e(ImageButton, {
-				Image = "rbxassetid://111265703348733",
-				Size = UDim2.fromScale(0.813253, 0.481928),
-				OnClick = function() end,
-			}) or nil,
-
-			password = e("TextLabel", {
-				BackgroundTransparency = 1,
-				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
-				Position = UDim2.fromScale(5.9502, 0.974783),
-				RichText = true,
-				Size = UDim2.fromScale(-2.69598, -0.596821),
-				Text = "Password: sigma",
+				Size = UDim2.fromScale(5, 0.4),
+				Text = props.LobbyName or "Game Lobby",
 				TextColor3 = Color3.new(1, 1, 1),
 				TextScaled = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
-				Visible = false,
-				ZIndex = 5,
+				ZIndex = 2,
+			}, {
+				uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
+					AspectRatio = 8,
+				}),
+
+				uIPadding = e("UIPadding", {
+					PaddingBottom = UDim.new(0.05, 0),
+					PaddingTop = UDim.new(0.05, 0),
+				}),
 			}),
+
+			lock = props.IsPrivate and e("ImageLabel", {
+				Image = "rbxassetid://111265703348733",
+				Size = UDim2.fromScale(0.813253, 0.481928),
+				Position = UDim2.fromScale(2.8, 0.42),
+				ScaleType = Enum.ScaleType.Fit,
+				BackgroundTransparency = 1,
+			}) or nil,
 		}),
 
 		joinButton = e(TextButton, {
-			Text = "Join",
+			Text = if props.Phase ~= "lobby" then "Started" 
+				   elseif props.PlayerCount >= props.MaxPlayers then "Full"
+				   else "Join",
 			Variant = "primary",
 			BackgroundImage = "rbxassetid://71123294591402",
 			Size = UDim2.fromScale(0.10737, 0.822917),
 			Position = UDim2.fromScale(0.88, 0.0855833),
 			CornerRadius = UDim.new(0.08, 0),
 			ZIndex = 2,
+			IsDisabled = props.Phase ~= "lobby" or props.PlayerCount >= props.MaxPlayers,
 			OnClick = props.OnJoin or function() end,
 		}),
 
-		spectate = e(TextButton, {
+		spectate = if props.Phase ~= "lobby" then e(TextButton, {
 			BackgroundColor3 = Color3.new(1, 1, 1),
 			Position = UDim2.fromScale(0.76387, 0.0855833),
 			BackgroundImage = "rbxassetid://71123294591402",
@@ -187,12 +182,12 @@ return function(props: ServerEntryProps)
 				Position = UDim2.fromScale(0.264, 0.264),
 				Size = UDim2.fromScale(0.48, 0.48),
 			}),
-		}),
+		}) else nil,
 
 		playerCount = e("TextLabel", {
 			BackgroundTransparency = 1,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
-			Position = UDim2.fromScale(0.0870968, 0.506917),
+			Position = if props.Phase ~= "lobby" then UDim2.fromScale(0.66, 0.506917) else UDim2.fromScale(0.78, 0.506917),
 			RichText = true,
 			Size = UDim2.fromScale(0.0412903, 0.289667),
 			Text = props.PlayerCount .. "/" .. props.MaxPlayers,
@@ -214,7 +209,7 @@ return function(props: ServerEntryProps)
 		playersLabel = e("TextLabel", {
 			BackgroundTransparency = 1,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
-			Position = UDim2.fromScale(0.0870968, 0.17775),
+			Position = if props.Phase ~= "lobby" then UDim2.fromScale(0.66, 0.17775) else UDim2.fromScale(0.78, 0.17775),
 			RichText = true,
 			Size = UDim2.fromScale(0.0948387, 0.289667),
 			Text = "Players",

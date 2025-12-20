@@ -52,7 +52,18 @@ function ScrabbleServiceClient:joinLobby(idOrCode: string)
 	end
 end
 
+function ScrabbleServiceClient:spectateLobby(idOrCode: string)
+	if self.Networker then
+		self.Networker:fire("SpectateLobby", idOrCode)
+	end
+end
+
 function ScrabbleServiceClient:leaveLobby()
+	self.CurrentLobby = nil
+	self.CurrentGame = nil
+	self.OnLobbyState:Fire(nil)
+	self.OnGameState:Fire(nil)
+	
 	if self.Networker then
 		self.Networker:fire("LeaveLobby")
 	end

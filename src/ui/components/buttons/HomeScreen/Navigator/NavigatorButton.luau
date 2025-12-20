@@ -23,6 +23,7 @@ return function(props: NavigatorButtonProps)
 		Size = props.Size or UDim2.fromOffset(90, 90),
 		CornerRadius = UDim.new(0.15, 0),
 		OnClick = props.OnClick,
+		ScaleType = Enum.ScaleType.Fit,
 	})
 end
 

@@ -27,6 +27,8 @@ export type PlayerRackProps = {
 	OnDragStart: ((index: number, letter: string) -> ())?,
 	OnDropToRack: (() -> ())?, -- Called when a tile is dropped back to rack
 	OnExchangeToggle: ((rackIndex: number) -> ())?, -- Toggle tile for exchange
+	PlacedTiles: { { row: number, col: number, letter: string, rackIndex: number } }?,
+	IsWordValid: boolean?,
 }
 
 -- Animated tile wrapper component
@@ -39,6 +41,7 @@ local function AnimatedTile(tileProps: {
 	IsDragging: boolean?,
 	IsDisabled: boolean?,
 	IsNew: boolean?,
+	OverrideColor: Color3?,
 	OnClick: ((number, string) -> ())?,
 	OnDragStart: ((number, string) -> ())?,
 })
@@ -116,6 +119,7 @@ local function AnimatedTile(tileProps: {
 			IsDragging = tileProps.IsDragging,
 			IsDisabled = tileProps.IsDisabled,
 			IsNew = false,
+			OverrideColor = tileProps.OverrideColor,
 			OnClick = tileProps.OnClick,
 			OnDragStart = tileProps.OnDragStart,
 		}),
@@ -137,6 +141,8 @@ return function(props: PlayerRackProps)
 	local isDisabled = props.IsDisabled
 	local isExchangeMode = props.IsExchangeMode
 	local exchangeSelection = props.ExchangeSelection or {}
+	local placedTiles = props.PlacedTiles or {}
+	local isWordValid = props.IsWordValid
 	local isHoveringRack, setIsHoveringRack = React.useState(false)
 	
 	-- Track previous rack size to detect new tiles
@@ -180,6 +186,22 @@ return function(props: PlayerRackProps)
 			end
 		end
 		
+		-- Check if this tile is currently on the board
+		local overrideColor = nil
+		if isExchangeMode then
+			local isOnBoard = false
+			for _, p in ipairs(placedTiles) do
+				if p.rackIndex == i then
+					isOnBoard = true
+					break
+				end
+			end
+			
+			if isOnBoard then
+				overrideColor = if isWordValid then Color3.fromRGB(100, 200, 100) else Color3.fromRGB(220, 100, 100)
+			end
+		end
+		
 		-- Use index as key for stable component identity
 		tiles["Tile_" .. i] = e(AnimatedTile, {
 			Letter = letter,
@@ -190,6 +212,7 @@ return function(props: PlayerRackProps)
 			IsDragging = draggingIndex == i,
 			IsDisabled = isDisabled,
 			IsNew = isNewTile,
+			OverrideColor = overrideColor,
 			OnClick = if isExchangeMode then handleExchangeClick else props.OnTileClick,
 			OnDragStart = if isExchangeMode then nil else props.OnDragStart,
 		})
@@ -214,11 +237,6 @@ return function(props: PlayerRackProps)
 		end,
 		[React.Event.MouseLeave] = function()
 			setIsHoveringRack(false)
-		end,
-		[React.Event.MouseButton1Up] = function()
-			if isDragging and props.OnDropToRack then
-				props.OnDropToRack()
-			end
 		end,
 	}, {
 		UICorner = e("UICorner", {
@@ -255,8 +273,8 @@ return function(props: PlayerRackProps)
 		
 		-- Strategy indicator (Optional: Could add a subtle text saying "Planning Mode")
 		StrategyHint = isDisabled and e("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 15),
-			Position = UDim2.new(0, 0, 0, -18),
+			Size = UDim2.fromScale(1, 0.05),
+			Position = UDim2.fromScale(0, -0.2),
 			BackgroundTransparency = 1,
 			Text = "Planning Mode - Strategy Only",
 			TextColor3 = Color3.fromRGB(150, 150, 180),

@@ -19,7 +19,8 @@ export type GameControlsProps = {
 	OnPass: (() -> ())?,
 	OnExchange: (() -> ())?,
 	OnCancelExchange: (() -> ())?,
-	OnClear: (() -> ())?, -- Clear current placement
+	OnClear: (() -> ())?,
+	CanPass: boolean?,
 }
 
 return function(props: GameControlsProps)
@@ -148,7 +149,7 @@ return function(props: GameControlsProps)
 				Text = "Pass",
 				Variant = "secondary",
 				Size = UDim2.fromScale(1, 1),
-				Disabled = not isMyTurn,
+				Disabled = not isMyTurn or props.CanPass == false,
 				OnClick = props.OnPass,
 			}),
 		}),

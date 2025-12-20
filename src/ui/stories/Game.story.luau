@@ -13,18 +13,18 @@ local mockGameState = {
 	Board = {
 		[8] = {
 			[8] = "H",
-			[9] = "E", 
+			[9] = "E",
 			[10] = "L",
 			[11] = "L",
-			[12] = "O"
-		}
+			[12] = "O",
+		},
 	},
-	Rack = {"S", "C", "R", "A", "B", "B", "L"},
+	Rack = { "S", "C", "R", "A", "B", "B", "L" },
 	Scores = {
 		[tostring(UserId)] = 120,
-		["2002"] = 85
+		["2002"] = 85,
 	},
-	TurnOrder = {UserId, 2002},
+	TurnOrder = { UserId, 2002 },
 	TurnIndex = 1,
 	TurnUserId = UserId,
 	BagCount = 80,
@@ -34,21 +34,41 @@ local mockGameState = {
 		{
 			UserId = UserId,
 			Name = "PlayerOne",
-			Message = "Good luck everyone!"
-		}
-	}
+			Message = "Good luck everyone!",
+		},
+	},
 }
+
+-- Populate with dummy logs
+for i = 1, 40 do
+	table.insert(mockGameState.Log, {
+		UserId = 1000 + (i % 5),
+		Name = "Dummy " .. (i % 5),
+		Message = "This is dummy message #" .. i .. " to test scrolling behavior! It's quite long to force wrapping.",
+	})
+end
 
 local mockLobbyState = {
 	Players = {
 		{ UserId = UserId, Name = LocalPlayer and LocalPlayer.Name or "PlayerOne" },
-		{ UserId = 2002, Name = "PlayerTwo" }
-	}
+		{ UserId = 2002, Name = "PlayerTwo" },
+	},
 }
+
+-- Populate with dummy players
+for i = 1, 15 do
+	local pid = 3000 + i
+	table.insert(mockLobbyState.Players, {
+		UserId = pid,
+		Name = "Dummy Player " .. i,
+	})
+	mockGameState.Scores[tostring(pid)] = math.random(10, 500)
+	table.insert(mockGameState.TurnOrder, pid)
+end
 
 return function(target)
 	local root = ReactRoblox.createRoot(target)
-	
+
 	-- Wrap in a full screen frame to simulate screen gui
 	root:render(React.createElement("Frame", {
 		Size = UDim2.fromScale(1, 1),
@@ -57,8 +77,10 @@ return function(target)
 		Game = React.createElement(GameScreen, {
 			GameState = mockGameState,
 			LobbyState = mockLobbyState,
-			OnLeave = function() print("Left game (mock)") end
-		})
+			OnLeave = function()
+				print("Left game (mock)")
+			end,
+		}),
 	}))
 
 	return function()

@@ -8,7 +8,7 @@ local e = React.createElement
 
 local function NavigatorButton(buttonProps)
 	local isSelected = buttonProps.ActiveTab == buttonProps.TabName
-	
+
 	return e(ImageButton, {
 		Image = buttonProps.UnselectedImage,
 		SelectedImage = buttonProps.SelectedImage,
@@ -26,42 +26,26 @@ end
 return function(props)
 	local activeTab = props.ActiveTab or "Customization"
 	local onTabChange = props.OnTabChange
-	
+
 	local player = Players.LocalPlayer
 	local displayName = player and ("@" .. player.Name) or "@Player"
 	local userId = player and player.UserId or 0
-	local thumbnailUrl = userId > 0 
-		and ("rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=150&h=150")
+	local thumbnailUrl = userId > 0 and ("rbxthumb://type=AvatarHeadShot&id=" .. userId .. "&w=150&h=150")
 		or "rbxassetid://115758187032362"
 
 	return e("Frame", {
 		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 0.138889),
 		Position = UDim2.fromScale(0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0),
 		ZIndex = props.ZIndex or 5, -- Default to a higher level
 	}, {
-		uIGradient = e("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 110, 201)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(63, 140, 234)),
-			}),
-			Rotation = 90,
-		}),
-
-
-		background = e("ImageLabel", {
-			BackgroundTransparency = 1,
-			Image = "rbxassetid://94493965475122",
-			Size = UDim2.fromScale(1, 1.11333),
-			ZIndex = 0,
-		}),
-
 		navigator = e("Frame", {
 			BackgroundColor3 = Color3.new(1, 1, 1),
-			Position = UDim2.fromScale(0.5, 0.22),
-			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.fromScale(0.5, 0.45),
+			AnchorPoint = Vector2.new(0.5, 0.5),
 			Size = UDim2.fromScale(0.6, 0.6),
 			ZIndex = 3,
 		}, {
@@ -225,7 +209,7 @@ return function(props)
 				Position = UDim2.fromScale(1.1, 0.5),
 				AnchorPoint = Vector2.new(0, 0.5),
 				RichText = true,
-				Size = UDim2.fromScale(1,1),
+				Size = UDim2.fromScale(1, 1),
 				Text = displayName,
 				TextColor3 = Color3.new(1, 1, 1),
 				TextScaled = true,
@@ -235,7 +219,7 @@ return function(props)
 				uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
 					AspectRatio = 3.66667,
 				}),
-	
+
 				uIPadding = e("UIPadding", {
 					PaddingBottom = UDim.new(0.166667, 0),
 				}),

@@ -95,9 +95,6 @@
             },
             "SoundUtils": {
               "$path": "src/modules/core/SoundUtils.luau"
-            },
-            "ValidationUtils": {
-              "$path": "src/modules/core/ValidationUtils.luau"
             }
           },
           "Game": {

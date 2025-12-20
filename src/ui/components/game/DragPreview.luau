@@ -24,30 +24,20 @@ export type DragPreviewProps = {
 
 return function(props: DragPreviewProps)
 	local letter = props.Letter
-	local mousePos, setMousePos = React.useState(Vector2.new(0, 0))
+	local mousePos, setMousePos = React.useBinding(Vector2.new(0, 0))
 	
-	-- Track mouse position
+	-- Track input position
 	React.useEffect(function()
-		-- Initial position - GetMouseLocation includes topbar offset
-		local initialPos = UserInputService:GetMouseLocation()
-		setMousePos(initialPos)
-		
-		local moveConn = UserInputService.InputChanged:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseMovement then
-				-- Use GetMouseLocation for consistency (includes topbar offset)
-				local pos = UserInputService:GetMouseLocation()
-				setMousePos(pos)
-			end
-		end)
-		
-		local touchConn = UserInputService.TouchMoved:Connect(function(_touch)
+		local RunService = game:GetService("RunService")
+		local connection = RunService.RenderStepped:Connect(function()
+			-- GetMouseLocation accurately tracks Mouse, Touch, and Virtual Cursor.
+			-- With IgnoreGuiInset = true in App.luau, we use absolute coordinates.
 			local pos = UserInputService:GetMouseLocation()
 			setMousePos(pos)
 		end)
 		
 		return function()
-			moveConn:Disconnect()
-			touchConn:Disconnect()
+			connection:Disconnect()
 		end
 	end, {})
 	
@@ -59,7 +49,9 @@ return function(props: DragPreviewProps)
 	
 	return e("Frame", {
 		Size = UDim2.fromOffset(50, 50),
-		Position = UDim2.fromOffset(mousePos.X, mousePos.Y),
+		Position = mousePos:map(function(pos)
+			return UDim2.fromOffset(pos.X, pos.Y)
+		end),
 		AnchorPoint = Vector2.new(0.5, 0.5), -- Center on cursor
 		BackgroundColor3 = Color3.fromRGB(245, 225, 180),
 		ZIndex = 100,

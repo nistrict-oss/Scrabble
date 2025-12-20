@@ -28,6 +28,7 @@ type Lobby = {
 	Code: string?,
 	TimerSeconds: number?, -- 0 = Infinite
 	Game: GameState?,
+	Spectators: { Player },
 }
 
 type GameState = {
@@ -41,6 +42,12 @@ type GameState = {
 	TurnIndex: number,
 	Log: { string },
 	Winner: number?,
+	ConsecutivePasses: number?, -- Track consecutive passes to end game
+	LastMove: { -- Info about the last valid move for animations
+		UserId: number,
+		PlacedTiles: { { r: number, c: number } },
+		TotalScore: number,
+	}?,
 }
 
 local ScrabbleServiceServer = {
@@ -48,6 +55,7 @@ local ScrabbleServiceServer = {
 	Lobbies = {} :: { Lobby },
 	LobbyByCode = {} :: { [string]: Lobby },
 	PlayerLobby = {} :: { [number]: Lobby },
+	PlayerSpectating = {} :: { [number]: Lobby },
 	NextLobbyId = 1,
 }
 
@@ -73,12 +81,22 @@ local function drawTiles(bag: { string }, rack: { string }, targetSize: number)
 end
 
 local function buildLobbySummary(lobby: Lobby)
+	local hostName = "Unknown"
+	for _, plr in ipairs(lobby.Players) do
+		if plr.UserId == lobby.HostUserId then
+			hostName = plr.Name
+			break
+		end
+	end
+
 	return {
 		Id = lobby.Id,
 		Name = lobby.Name,
+		HostName = hostName,
 		Players = #lobby.Players,
 		MaxPlayers = lobby.MaxPlayers,
 		Private = lobby.Private,
+		Code = if lobby.Private then lobby.Code else nil,
 		HostUserId = lobby.HostUserId,
 		Phase = lobby.Game and lobby.Game.Phase or "lobby",
 	}
@@ -88,6 +106,7 @@ function ScrabbleServiceServer:init()
 	self.Networker = Networker.server.new("ScrabbleService", self, {
 		self.CreateLobby,
 		self.JoinLobby,
+		self.SpectateLobby,
 		self.LeaveLobby,
 		self.ToggleReady,
 		self.StartGame,
@@ -104,8 +123,11 @@ function ScrabbleServiceServer:init()
 	end)
 	Players.PlayerAdded:Connect(function(player)
 		-- Send current lobby list to newcomers
-		self.Networker:fire(player, "LobbyList", {})
-		self:broadcastLobbyList()
+		local summaries = {}
+		for _, lobby in ipairs(self.Lobbies) do
+			table.insert(summaries, buildLobbySummary(lobby))
+		end
+		self.Networker:fire(player, "LobbyList", summaries)
 	end)
 end
 
@@ -129,6 +151,7 @@ function ScrabbleServiceServer:sendLobbyState(lobby: Lobby)
 		Players = {},
 		Ready = {},
 		Phase = lobby.Game and lobby.Game.Phase or "lobby",
+		SpectatorCount = #lobby.Spectators,
 	}
 	for _, plr in ipairs(lobby.Players) do
 		table.insert(state.Players, {
@@ -137,13 +160,24 @@ function ScrabbleServiceServer:sendLobbyState(lobby: Lobby)
 		})
 		state.Ready[plr.UserId] = lobby.Ready[plr.UserId] == true
 	end
-	self.Networker:fire(lobby.Players, "LobbyState", state)
+
+	local recipients = {}
+	for _, p in ipairs(lobby.Players) do
+		table.insert(recipients, p)
+	end
+	for _, p in ipairs(lobby.Spectators) do
+		table.insert(recipients, p)
+	end
+
+	self.Networker:fire(recipients, "LobbyState", state)
 end
 
 function ScrabbleServiceServer:sendGameState(lobby: Lobby)
-	if not lobby.Game then return end
+	if not lobby.Game then
+		return
+	end
 	local game = lobby.Game
-	
+
 	-- Convert board to network-safe format (sparse arrays don't transfer well)
 	-- Send as list of {row, col, letter} for occupied cells
 	local boardTiles = {}
@@ -155,7 +189,7 @@ function ScrabbleServiceServer:sendGameState(lobby: Lobby)
 			end
 		end
 	end
-	
+
 	local view = {
 		Phase = game.Phase,
 		BoardTiles = boardTiles, -- Network-safe format
@@ -167,11 +201,21 @@ function ScrabbleServiceServer:sendGameState(lobby: Lobby)
 		Log = game.Log,
 		Winner = game.Winner,
 		PlayerTimes = game.PlayerTimes,
+		FinalPlayers = game.FinalPlayers,
+		LastMove = game.LastMove,
 	}
 	-- Send each player their own rack
 	for _, plr in ipairs(lobby.Players) do
 		view.Rack = game.Racks[plr.UserId] or {}
+		view.IsSpectator = false
 		self.Networker:fire({ plr }, "GameState", view)
+	end
+
+	-- Send to spectators (empty rack)
+	if #lobby.Spectators > 0 then
+		view.Rack = {}
+		view.IsSpectator = true
+		self.Networker:fire(lobby.Spectators, "GameState", view)
 	end
 end
 
@@ -194,19 +238,36 @@ function ScrabbleServiceServer:findLobbyById(id: string): Lobby?
 end
 
 function ScrabbleServiceServer:handleLeave(player: Player)
-	local lobby = self.PlayerLobby[player.UserId]
-	if not lobby then return end
-	self.PlayerLobby[player.UserId] = nil
+	local lobby = self.PlayerLobby[player.UserId] or self.PlayerSpectating[player.UserId]
+	if not lobby then
+		return
+	end
 
-	-- Remove player
+	-- Remove from player lookups
+	self.PlayerLobby[player.UserId] = nil
+	self.PlayerSpectating[player.UserId] = nil
+
+	local isPlayer = false
+	-- Remove from players list
 	for i = #lobby.Players, 1, -1 do
 		if lobby.Players[i] == player then
 			table.remove(lobby.Players, i)
+			isPlayer = true
 		end
 	end
-	lobby.Ready[player.UserId] = nil
 
-	if lobby.Game and lobby.Game.Phase == "inGame" then
+	-- Remove from spectators list
+	for i = #lobby.Spectators, 1, -1 do
+		if lobby.Spectators[i] == player then
+			table.remove(lobby.Spectators, i)
+		end
+	end
+
+	lobby.Ready[player.UserId] = nil
+	self.Networker:fire({ player }, "LobbyState", nil)
+	self.Networker:fire({ player }, "GameState", nil)
+
+	if isPlayer and lobby.Game and lobby.Game.Phase == "inGame" then
 		-- Simple resign handling
 		lobby.Game.Scores[player.UserId] = lobby.Game.Scores[player.UserId] or 0
 		table.insert(lobby.Game.Log, player.Name .. " resigned.")
@@ -249,7 +310,15 @@ function ScrabbleServiceServer:handleLeave(player: Player)
 end
 
 -- API implementations
-function ScrabbleServiceServer.CreateLobby(self, player: Player, name: string?, maxPlayers: number?, isPrivate: boolean?, code: string?, timerSeconds: number?)
+function ScrabbleServiceServer.CreateLobby(
+	self,
+	player: Player,
+	name: string?,
+	maxPlayers: number?,
+	isPrivate: boolean?,
+	code: string?,
+	timerSeconds: number?
+)
 	local cleanName = string.sub(name or "Lobby", 1, 30)
 	local cappedMax = math.clamp(maxPlayers or 4, 1, 10) -- Allow solo play (min 1)
 	local useCode = if isPrivate then (code and string.upper(string.sub(code, 1, 8)) or self:getOrCreateCode()) else nil
@@ -265,6 +334,7 @@ function ScrabbleServiceServer.CreateLobby(self, player: Player, name: string?, 
 		Code = useCode,
 		TimerSeconds = timerSeconds or 0,
 		Game = nil,
+		Spectators = {},
 	}
 	self.NextLobbyId += 1
 	table.insert(self.Lobbies, lobby)
@@ -284,20 +354,26 @@ function ScrabbleServiceServer.JoinLobby(self, player: Player, idOrCode: string)
 	end
 
 	local lobby = self:findLobbyById(idOrCode)
+	if lobby and lobby.Private then
+		lobby = nil
+	end
+
 	if not lobby then
 		lobby = self.LobbyByCode[string.upper(idOrCode or "")]
 	end
+
 	if not lobby then
-		self.Networker:fire({ player }, "Error", "Lobby not found")
+		self.Networker:fire({ player }, "Error", "Lobby not found or incorrect code")
 		return
 	end
 	if #lobby.Players >= lobby.MaxPlayers then
 		self.Networker:fire({ player }, "Error", "Lobby is full")
 		return
 	end
-	
+
 	if lobby.Game and lobby.Game.Phase == "inGame" then
-		self.Networker:fire({ player }, "Error", "Game is already in progress")
+		-- Automatically add as spectator
+		self:handleSpectate(player, lobby)
 		return
 	end
 
@@ -309,20 +385,54 @@ function ScrabbleServiceServer.JoinLobby(self, player: Player, idOrCode: string)
 	self:broadcastLobbyList()
 end
 
+function ScrabbleServiceServer.SpectateLobby(self, player, idOrCode)
+	local lobby = self:findLobbyById(idOrCode)
+	if not lobby then
+		lobby = self.LobbyByCode[string.upper(idOrCode or "")]
+	end
+	if not lobby then
+		self.Networker:fire({ player }, "Error", "Lobby not found")
+		return
+	end
+
+	self:handleSpectate(player, lobby)
+end
+
+function ScrabbleServiceServer:handleSpectate(player, lobby)
+	-- Remove from any existing lobby
+	self:handleLeave(player)
+
+	-- Add to spectators
+	table.insert(lobby.Spectators, player)
+	self.PlayerSpectating[player.UserId] = lobby
+
+	-- Send current state
+	self:sendLobbyState(lobby)
+	if lobby.Game and (lobby.Game.Phase == "inGame" or lobby.Game.Phase == "ended") then
+		self:sendGameState(lobby)
+	end
+
+	self:broadcastLobbyList()
+end
+
 function ScrabbleServiceServer.LeaveLobby(self, player: Player)
 	self:handleLeave(player)
 end
 
 function ScrabbleServiceServer.ToggleReady(self, player: Player)
 	local lobby = self.PlayerLobby[player.UserId]
-	if not lobby or lobby.Game then return end
+	if not lobby or lobby.Game then
+		return
+	end
 	lobby.Ready[player.UserId] = not lobby.Ready[player.UserId]
 	self:sendLobbyState(lobby)
 end
 
 function ScrabbleServiceServer.StartGame(self, player: Player)
 	local lobby = self.PlayerLobby[player.UserId]
-	if not lobby or lobby.Game then return end
+	if not lobby or lobby.Game then
+		return
+	end
 	if lobby.HostUserId ~= player.UserId then
 		self.Networker:fire({ player }, "Error", "Only host can start")
 		return
@@ -341,7 +451,7 @@ function ScrabbleServiceServer.StartGame(self, player: Player)
 	local scores = {}
 	local order = {}
 	local playerTimes = if lobby.TimerSeconds and lobby.TimerSeconds > 0 then {} else nil
-	
+
 	for _, plr in ipairs(lobby.Players) do
 		local rack = {}
 		drawTiles(bag, rack, RACK_SIZE)
@@ -351,6 +461,12 @@ function ScrabbleServiceServer.StartGame(self, player: Player)
 		if playerTimes then
 			playerTimes[plr.UserId] = lobby.TimerSeconds
 		end
+	end
+
+	-- Randomize Turn Order
+	for i = #order, 2, -1 do
+		local j = math.random(i)
+		order[i], order[j] = order[j], order[i]
 	end
 
 	lobby.Game = {
@@ -365,48 +481,28 @@ function ScrabbleServiceServer.StartGame(self, player: Player)
 		Log = { "Game started! " .. Players:GetPlayerByUserId(order[1]).Name .. "'s turn." },
 		Winner = nil,
 	}
-	
+
 	-- Start timer loop if enabled
 	if playerTimes then
 		task.spawn(function()
 			while lobby.Game and lobby.Game.Phase == "inGame" do
 				task.wait(1)
-				if not lobby.Game or not lobby.Game.PlayerTimes then break end
-				
+				if not lobby.Game or not lobby.Game.PlayerTimes then
+					break
+				end
+
 				local currentTurnUserId = lobby.Game.TurnOrder[lobby.Game.TurnIndex]
 				if currentTurnUserId and lobby.Game.PlayerTimes[currentTurnUserId] then
 					lobby.Game.PlayerTimes[currentTurnUserId] -= 1
-					
-					-- Auto-pass if time runs out
+
+					-- Broadcast timer update to clients
+					self:sendGameState(lobby)
+
+					-- Forfeit if time runs out
 					if lobby.Game.PlayerTimes[currentTurnUserId] <= 0 then
 						lobby.Game.PlayerTimes[currentTurnUserId] = 0
-						table.insert(lobby.Game.Log, Players:GetPlayerByUserId(currentTurnUserId).Name .. " ran out of time!")
-						
-						local p = Players:GetPlayerByUserId(currentTurnUserId)
-						if p then
-							self:PassTurn(p)
-						else
-							-- Player might have left, handle advance manually
-							self:advanceTurn(lobby)
-							self:finishIfDone(lobby)
-							self:sendGameState(lobby)
-						end
-						-- Sync every 5 seconds to keep clocks relatively fresh
-						self:sendGameState(lobby)
-					end
-					
-					-- Check if everyone is out of time (End Game trigger)
-					local allOut = true
-					for _, pid in ipairs(lobby.Game.TurnOrder) do
-						if (lobby.Game.PlayerTimes[pid] or 0) > 0 then
-							allOut = false
-							break
-						end
-					end
-					
-					if allOut then
-						table.insert(lobby.Game.Log, "All players out of time! Ending game.")
-						self:finishIfDone(lobby, true)
+						self:handleForfeit(lobby, currentTurnUserId)
+						break
 					end
 				end
 			end
@@ -460,7 +556,7 @@ end
 local function getWordAt(board: { { string? } }, row: number, col: number, dir: string): (string, number, number)
 	local word = ""
 	local startRow, startCol = row, col
-	
+
 	if dir == "across" then
 		startCol = col
 		while startCol > 1 and board[row] and board[row][startCol - 1] do
@@ -484,13 +580,97 @@ local function getWordAt(board: { { string? } }, row: number, col: number, dir: 
 		end
 		startCol = col
 	end
-	
+
 	return word, startRow, startCol
+end
+
+function ScrabbleServiceServer:handleForfeit(lobby: Lobby, forfeitingUserId: number)
+	local game = lobby.Game
+	if not game or game.Phase == "ended" then
+		return
+	end
+
+	local forfeiterName = "Unknown"
+	for _, p in ipairs(lobby.Players) do
+		if p.UserId == forfeitingUserId then
+			forfeiterName = p.Name
+			break
+		end
+	end
+
+	game.Phase = "ended"
+	table.insert(game.Log, string.format("%s ran out of time and has forfeited the game!", forfeiterName))
+
+	-- Capture final player names/IDs
+	game.FinalPlayers = {}
+	for _, player in ipairs(lobby.Players) do
+		table.insert(game.FinalPlayers, {
+			UserId = player.UserId,
+			Name = player.Name,
+		})
+	end
+
+	-- Identify current leader's score among others (the target to be 200 points behind)
+	local maxScore = -999999
+	local anyOtherPlayer = false
+	for userId, score in pairs(game.Scores) do
+		if tonumber(userId) ~= forfeitingUserId then
+			anyOtherPlayer = true
+			if score > maxScore then
+				maxScore = score
+			end
+		end
+	end
+
+	-- If no other players (solo play), use current score
+	if not anyOtherPlayer then
+		maxScore = game.Scores[tostring(forfeitingUserId)] or 0
+	end
+
+	-- Set forfeiter's score to exactly 200 points below the leader
+	local targetScore = maxScore - 200
+	game.Scores[tostring(forfeitingUserId)] = targetScore
+	table.insert(game.Log, string.format("%s's score adjusted to %d (200 point deficit).", forfeiterName, targetScore))
+
+	-- Determine winner among those remaining
+	local winners = {}
+	local bestScore = -999999
+	for userId, score in pairs(game.Scores) do
+		if score > bestScore then
+			bestScore = score
+			winners = { userId }
+		elseif score == bestScore then
+			table.insert(winners, userId)
+		end
+	end
+
+	if #winners > 0 then
+		game.Winner = tonumber(winners[1])
+		if #winners > 1 then
+			table.insert(game.Log, "It's a tie!")
+		else
+			local pName = "Winner"
+			-- Get name from FinalPlayers
+			for _, fp in ipairs(game.FinalPlayers) do
+				if tostring(fp.UserId) == tostring(game.Winner) then
+					pName = fp.Name
+					break
+				end
+			end
+			table.insert(game.Log, pName .. " wins!")
+		end
+	end
+
+	self:sendGameState(lobby)
+	self:sendLobbyState(lobby)
+	self:broadcastLobbyList()
 end
 
 function ScrabbleServiceServer:advanceTurn(lobby: Lobby)
 	local game = lobby.Game
-	if not game then return end
+	if not game then
+		return
+	end
 	game.TurnIndex += 1
 	if game.TurnIndex > #game.TurnOrder then
 		game.TurnIndex = 1
@@ -499,8 +679,10 @@ end
 
 function ScrabbleServiceServer:finishIfDone(lobby: Lobby, forceEnd: boolean?)
 	local game = lobby.Game
-	if not game then return end
-	
+	if not game then
+		return
+	end
+
 	local anyoneEmpty = false
 	if #game.Bag == 0 then
 		for userId, rack in pairs(game.Racks) do
@@ -510,23 +692,43 @@ function ScrabbleServiceServer:finishIfDone(lobby: Lobby, forceEnd: boolean?)
 			end
 		end
 	end
-	
+
 	if anyoneEmpty or forceEnd then
 		game.Phase = "ended"
-		
-		-- Apply penalties: -1 per tile
-		table.insert(game.Log, "Final Scoring: -1 point per remaining tile.")
+
+		-- Capture final player names/IDs so leaderboard persists after players leave
+		game.FinalPlayers = {}
+		for _, player in ipairs(lobby.Players) do
+			table.insert(game.FinalPlayers, {
+				UserId = player.UserId,
+				Name = player.Name,
+			})
+		end
+
+		-- Apply penalties: subtract value of remaining tiles
+		table.insert(game.Log, "Final Scoring: Subtracting remaining tile values.")
+		local letterValues = ScrabbleConfig.getLetterValues()
+
 		for userId, rack in pairs(game.Racks) do
-			local penalty = #rack
+			local penalty = 0
+			for _, letter in ipairs(rack) do
+				penalty += letterValues[letter] or 1
+			end
+
 			if penalty > 0 then
 				game.Scores[userId] = (game.Scores[userId] or 0) - penalty
-				local p = Players:GetPlayerByUserId(userId)
-				if p then
-					table.insert(game.Log, string.format("%s lost %d points from remaining tiles.", p.Name, penalty))
+				-- Get name from FinalPlayers since player object might be gone
+				local name = "Unknown"
+				for _, fp in ipairs(game.FinalPlayers) do
+					if tostring(fp.UserId) == tostring(userId) then
+						name = fp.Name
+						break
+					end
 				end
+				table.insert(game.Log, string.format("%s lost %d points from remaining tiles.", name, penalty))
 			end
 		end
-		
+
 		-- Calculate winner
 		local maxScore = -999999
 		local winners = {}
@@ -538,7 +740,7 @@ function ScrabbleServiceServer:finishIfDone(lobby: Lobby, forceEnd: boolean?)
 				table.insert(winners, userId)
 			end
 		end
-		
+
 		if #winners > 0 then
 			game.Winner = winners[1] -- Simplified to first winner for now
 			if #winners > 1 then
@@ -550,7 +752,7 @@ function ScrabbleServiceServer:finishIfDone(lobby: Lobby, forceEnd: boolean?)
 				end
 			end
 		end
-		
+
 		self:sendGameState(lobby)
 		self:sendLobbyState(lobby)
 		self:broadcastLobbyList()
@@ -559,8 +761,8 @@ end
 
 function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 	local lobby = self.PlayerLobby[player.UserId]
-	if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then 
-		return 
+	if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then
+		return
 	end
 	local game = lobby.Game
 	local userId = player.UserId
@@ -572,39 +774,39 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 	-- Accept placedTiles array: { { row: number, col: number, letter: string } }
 	local placedTiles = payload and payload.placedTiles or {}
 	local direction = payload and payload.direction or "across"
-	
+
 	if #placedTiles == 0 then
 		self.Networker:fire({ player }, "Error", "No tiles to place")
 		return
 	end
-	
+
 	-- Validate bounds and collect letters needed from rack
 	local lettersNeeded = {}
 	for _, tile in ipairs(placedTiles) do
 		local r, c = tonumber(tile.row), tonumber(tile.col)
 		local letter = string.upper(tile.letter or "")
-		
+
 		if not r or not c or r < 1 or r > BOARD_SIZE or c < 1 or c > BOARD_SIZE then
 			self.Networker:fire({ player }, "Error", "Out of bounds")
 			return
 		end
-		
+
 		-- Check if cell is already occupied
 		if game.Board[r] and game.Board[r][c] then
 			self.Networker:fire({ player }, "Error", "Cell already occupied")
 			return
 		end
-		
+
 		table.insert(lettersNeeded, letter)
 	end
-	
+
 	-- Check if player has required letters
 	local rack = game.Racks[userId] or {}
 	if not lettersAvailable(rack, lettersNeeded) then
 		self.Networker:fire({ player }, "Error", "Not enough letters in rack")
 		return
 	end
-	
+
 	-- Check first move touches center
 	local boardEmpty = isBoardEmpty(game.Board)
 	if boardEmpty then
@@ -625,7 +827,10 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 		for _, tile in ipairs(placedTiles) do
 			local r, c = tonumber(tile.row), tonumber(tile.col)
 			local neighbors = {
-				{ r - 1, c }, { r + 1, c }, { r, c - 1 }, { r, c + 1 }
+				{ r - 1, c },
+				{ r + 1, c },
+				{ r, c - 1 },
+				{ r, c + 1 },
 			}
 			for _, pos in ipairs(neighbors) do
 				local nr, nc = pos[1], pos[2]
@@ -636,15 +841,17 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 					end
 				end
 			end
-			if touchesExisting then break end
+			if touchesExisting then
+				break
+			end
 		end
-		
+
 		if not touchesExisting then
 			self.Networker:fire({ player }, "Error", "Must connect to existing words")
 			return
 		end
 	end
-	
+
 	-- Create a temporary board with placed tiles to validate words
 	local tempBoard = {}
 	for r = 1, BOARD_SIZE do
@@ -653,14 +860,14 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 			tempBoard[r][c] = game.Board[r] and game.Board[r][c] or nil
 		end
 	end
-	
+
 	-- Place tiles on temp board
 	for _, tile in ipairs(placedTiles) do
 		local r = tonumber(tile.row) or 1
 		local c = tonumber(tile.col) or 1
 		tempBoard[r][c] = string.upper(tile.letter)
 	end
-	
+
 	-- Map of new tile positions for multipliers
 	local newTilesMap = {}
 	for _, tile in ipairs(placedTiles) do
@@ -673,17 +880,21 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 		local wordMult = 1
 		for i = 1, #word do
 			local r, c = startR, startC
-			if dir == "across" then c = startC + i - 1 else r = startR + i - 1 end
-			
+			if dir == "across" then
+				c = startC + i - 1
+			else
+				r = startR + i - 1
+			end
+
 			local letter = string.sub(word, i, i)
 			local val = LETTER_VALUES[letter] or 0
-			
+
 			if newTilesMap[r .. "," .. c] then
 				local type = ScrabbleConfig.SPECIAL_POSITIONS[r .. "," .. c]
 				local m = type and ScrabbleConfig.MULTIPLIERS[type]
 				local lMult = m and m.letter or 1
 				local wMult = m and m.word or 1
-				
+
 				score += val * lMult
 				wordMult *= wMult
 			else
@@ -698,22 +909,22 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 	local firstRow = tonumber(firstTile.row) or 1
 	local firstCol = tonumber(firstTile.col) or 1
 	local mainWord, mainStartR, mainStartC = getWordAt(tempBoard, firstRow, firstCol, direction)
-	
+
 	-- Validate main word
 	if not isWordValid(mainWord) then
 		self.Networker:fire({ player }, "Error", mainWord .. " is not a valid word")
 		return
 	end
-	
+
 	-- Calculate main word score
 	local totalScore = calculateSegmentScore(mainWord, mainStartR, mainStartC, direction)
-	
+
 	-- Check and score all cross-words
 	local crossDir = if direction == "across" then "down" else "across"
 	for _, tile in ipairs(placedTiles) do
 		local r, c = tonumber(tile.row), tonumber(tile.col)
 		local crossWord, cwStartR, cwStartC = getWordAt(tempBoard, r, c, crossDir)
-		
+
 		if #crossWord > 1 then
 			if not isWordValid(crossWord) then
 				self.Networker:fire({ player }, "Error", crossWord .. " is not a valid word")
@@ -723,9 +934,9 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 			totalScore += calculateSegmentScore(crossWord, cwStartR, cwStartC, crossDir)
 		end
 	end
-	
+
 	-- All validation passed! Apply changes to actual game state
-	
+
 	-- Remove letters from rack
 	for _, letter in ipairs(lettersNeeded) do
 		for idx = 1, #rack do
@@ -735,21 +946,35 @@ function ScrabbleServiceServer.PlaceWord(self, player: Player, payload: any)
 			end
 		end
 	end
-	
+
 	-- Place tiles on actual board
 	for _, tile in ipairs(placedTiles) do
 		local r, c = tonumber(tile.row), tonumber(tile.col)
 		game.Board[r][c] = string.upper(tile.letter)
 	end
-	
+
 	-- Update score and log
 	game.Scores[userId] = (game.Scores[userId] or 0) + totalScore
 	table.insert(game.Log, player.Name .. " played " .. mainWord .. " for " .. totalScore .. " points.")
-	
+
 	-- Refill rack
 	drawTiles(game.Bag, rack, RACK_SIZE)
 	game.Racks[userId] = rack
-	
+
+	-- Reset consecutive passes on successful move
+	game.ConsecutivePasses = 0
+
+	-- Record last move for animations
+	local moveTiles = {}
+	for _, tile in ipairs(placedTiles) do
+		table.insert(moveTiles, { r = tonumber(tile.row), c = tonumber(tile.col) })
+	end
+	game.LastMove = {
+		UserId = userId,
+		PlacedTiles = moveTiles,
+		TotalScore = totalScore,
+	}
+
 	self:advanceTurn(lobby)
 	self:finishIfDone(lobby)
 	self:sendGameState(lobby)
@@ -758,82 +983,111 @@ end
 
 function ScrabbleServiceServer.PassTurn(self, player: Player)
 	local lobby = self.PlayerLobby[player.UserId]
-	if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then return end
+	if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then
+		return
+	end
 	if lobby.Game.TurnOrder[lobby.Game.TurnIndex] ~= player.UserId then
 		return
 	end
-	table.insert(lobby.Game.Log, player.Name .. " passed.")
+	if #lobby.Players <= 1 then
+		self.Networker:fire({ player }, "Error", "Cannot pass in single-player game")
+		return
+	end
+
+	-- Track consecutive passes
+	local game = lobby.Game
+	game.ConsecutivePasses = (game.ConsecutivePasses or 0) + 1
+
+	table.insert(game.Log, player.Name .. " passed.")
+
+	-- Check if everyone has passed for 1 full round (everyone skipped consecutively)
+	local passesPerRound = #game.TurnOrder
+
+	if game.ConsecutivePasses >= passesPerRound then
+		table.insert(game.Log, "All players passed in a row. Ending game.")
+		self:finishIfDone(lobby, true)
+		self:sendGameState(lobby)
+		return
+	end
+
 	self:advanceTurn(lobby)
 	self:finishIfDone(lobby)
 	self:sendGameState(lobby)
 end
 
-function ScrabbleServiceServer.ExchangeTiles(self, player: Player, exchangeData: { Letters: { string }, Indices: { number } })
-    local lobby = self.PlayerLobby[player.UserId]
-    if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then 
-        return 
-    end
-    
-    local game = lobby.Game
-    if game.TurnOrder[game.TurnIndex] ~= player.UserId then
-        return
-    end
-    
-    local rack = game.Racks[player.UserId] or {}
-    local letters = exchangeData.Letters or {}
-    local indices = exchangeData.Indices or {}
-    
-    if #game.Bag < #letters then
-        self.Networker:fire({ player }, "Error", "Not enough tiles in bag")
-        return
-    end
-    
-    -- Sort indices in reverse order to safely remove from the rack
-    local sortedIndices = table.clone(indices)
-    local sortFunc = function(a, b)
-        return a > b
-    end
-    table.sort(sortedIndices, sortFunc)
-    
-    -- Remove letters from rack
-    for _, idx in ipairs(sortedIndices) do
-        if rack[idx] then
-            table.remove(rack, idx)
-        end
-    end
-    
-    -- Add old letters to bag
-    for _, letter in ipairs(letters) do
-        table.insert(game.Bag, letter)
-    end
-    
-    -- Shuffle bag
-    for i = #game.Bag, 2, -1 do
-        local j = math.random(i)
-        game.Bag[i], game.Bag[j] = game.Bag[j], game.Bag[i]
-    end
-    
-    -- Draw new tiles and insert them at the original positions
-    for i, idx in ipairs(indices) do
-        if #game.Bag > 0 then
-            local newTile = table.remove(game.Bag)
-            table.insert(rack, idx, newTile)
-        end
-    end
-    
-    -- Ensure rack doesn't exceed max size
-    while #rack > RACK_SIZE do
-        table.insert(game.Bag, table.remove(rack))
-    end
-    
-    game.Racks[player.UserId] = rack
-    table.insert(game.Log, player.Name .. " exchanged " .. #letters .. " tiles.")
-    
-    -- Advance turn and update game state
-    self:advanceTurn(lobby)
-    self:sendGameState(lobby)
-    
-    -- Advance turn and update game state
+function ScrabbleServiceServer.ExchangeTiles(
+	self,
+	player: Player,
+	exchangeData: { Letters: { string }, Indices: { number } }
+)
+	local lobby = self.PlayerLobby[player.UserId]
+	if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then
+		return
+	end
+
+	local game = lobby.Game
+	if game.TurnOrder[game.TurnIndex] ~= player.UserId then
+		return
+	end
+
+	local rack = game.Racks[player.UserId] or {}
+	local letters = exchangeData.Letters or {}
+	local indices = exchangeData.Indices or {}
+
+	if #game.Bag < #letters then
+		self.Networker:fire({ player }, "Error", "Not enough tiles in bag")
+		return
+	end
+
+	-- Sort indices in reverse order to safely remove from the rack
+	local sortedIndices = table.clone(indices)
+	local sortFunc = function(a, b)
+		return a > b
+	end
+	table.sort(sortedIndices, sortFunc)
+
+	-- Remove letters from rack
+	for _, idx in ipairs(sortedIndices) do
+		if rack[idx] then
+			table.remove(rack, idx)
+		end
+	end
+
+	-- Add old letters to bag
+	for _, letter in ipairs(letters) do
+		table.insert(game.Bag, letter)
+	end
+
+	-- Shuffle bag
+	for i = #game.Bag, 2, -1 do
+		local j = math.random(i)
+		game.Bag[i], game.Bag[j] = game.Bag[j], game.Bag[i]
+	end
+
+	-- Draw new tiles and insert them at the original positions
+	for i, idx in ipairs(indices) do
+		if #game.Bag > 0 then
+			local newTile = table.remove(game.Bag)
+			table.insert(rack, idx, newTile)
+		end
+	end
+
+	-- Ensure rack doesn't exceed max size
+	while #rack > RACK_SIZE do
+		table.insert(game.Bag, table.remove(rack))
+	end
+
+	game.Racks[player.UserId] = rack
+	table.insert(game.Log, player.Name .. " exchanged " .. #letters .. " tiles.")
+
+	-- Reset consecutive passes on exchange (new tiles might allow moves)
+	game.ConsecutivePasses = 0
+
+	-- Advance turn and update game state
+	self:advanceTurn(lobby)
+	self:sendGameState(lobby)
+
+	-- Advance turn and update game state
 end
 
 function ScrabbleServiceServer.Resign(self, player: Player)
@@ -842,35 +1096,35 @@ end
 
 function ScrabbleServiceServer.SendMessage(self, player: Player, message: string)
 	-- Validation
-	if type(message) ~= "string" or #message == 0 or #message > 200 then 
+	if type(message) ~= "string" or #message == 0 or #message > 200 then
 		warn("[Server] Message validation failed")
-		return 
+		return
 	end
-	
+
 	local lobby = self.PlayerLobby[player.UserId]
-	if not lobby or not lobby.Game then 
+	if not lobby or not lobby.Game then
 		warn("[Server] No lobby/game for player")
-		return 
+		return
 	end
-	
+
 	-- Filter text
 	local TextService = game:GetService("TextService")
 	local success, filtered = pcall(function()
 		return TextService:FilterStringAsync(message, player.UserId):GetNonChatStringForBroadcastAsync()
 	end)
-	
+
 	if not success then
 		warn("[ScrabbleServer] Chat filtering failed:", filtered)
 		filtered = message -- Fallback for Studio/Testing
 	end
-	
+
 	-- Add to log
 	table.insert(lobby.Game.Log, {
 		UserId = player.UserId,
 		Name = player.Name,
-		Message = filtered
+		Message = filtered,
 	})
-	
+
 	self:sendGameState(lobby)
 end
 
@@ -883,4 +1137,3 @@ function ScrabbleServiceServer.ValidateWord(self, _player: Player, word: string)
 end
 
 return ScrabbleServiceServer
-

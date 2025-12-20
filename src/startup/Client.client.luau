@@ -15,14 +15,15 @@ local SettingsServiceClient = require(ReplicatedStorage.Shared.Services.Settings
 local PurchaseServiceClient = require(ReplicatedStorage.Shared.Services.PurchaseService.PurchaseServiceClient)
 local TasksServiceClient = require(ReplicatedStorage.Shared.Services.TasksService.TasksServiceClient)
 local CodesServiceClient = require(ReplicatedStorage.Shared.Services.CodesService.CodesServiceClient)
-local DailyRewardsServiceClient = require(ReplicatedStorage.Shared.Services.DailyRewardsService.DailyRewardsServiceClient)
+local DailyRewardsServiceClient =
+	require(ReplicatedStorage.Shared.Services.DailyRewardsService.DailyRewardsServiceClient)
 local LeaderboardServiceClient = require(ReplicatedStorage.Shared.Services.LeaderboardService.LeaderboardServiceClient)
 local ChatTagServiceClient = require(ReplicatedStorage.Shared.Services.ChatTagService.ChatTagServiceClient)
 local PolicyServiceClient = require(ReplicatedStorage.Shared.Services.PolicyService.PolicyServiceClient)
 
 local ScrabbleServiceClient = require(ReplicatedStorage.Shared.Services.ScrabbleService.ScrabbleServiceClient)
 
-
+local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
 local App = require(ReplicatedStorage.UI.App)
 
 -- Initialize custom services
@@ -40,6 +41,9 @@ PolicyServiceClient:init()
 -- Initialize game service
 ScrabbleServiceClient:init()
 
+-- Preload all game sounds for instant playback
+print("[Client] Preloading sounds...")
+SoundUtils.preloadSounds()
 
 local PlayerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 

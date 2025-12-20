@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local React = require(ReplicatedStorage.Packages.React)
 local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
+local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
 
 local e = React.createElement
 
@@ -34,10 +35,10 @@ return function(props: TextButtonProps)
 	local corner = props.CornerRadius or UDim.new(0.1875, 0)
 	local size = props.Size or UDim2.fromScale(1, 1)
 	local style = STYLES[variant]
-	local backgroundImage = props.BackgroundImage or "rbxassetid://130347638303988"
 
 	local function handleClick()
 		if disabled then return end
+		SoundUtils.playButtonClick()
 		if props.OnClick then
 			props.OnClick()
 		end
@@ -76,6 +77,7 @@ return function(props: TextButtonProps)
 			[React.Event.Activated] = handleClick,
 			[React.Event.MouseEnter] = function()
 				if disabled then return end
+				SoundUtils.playButtonHover()
 				animateScale(1.05)
 			end,
 			[React.Event.MouseLeave] = function()
@@ -136,6 +138,7 @@ return function(props: TextButtonProps)
 		[React.Event.Activated] = handleClick,
 		[React.Event.MouseEnter] = function()
 			if disabled then return end
+			SoundUtils.playButtonHover()
 			animateScale(1.05)
 		end,
 		[React.Event.MouseLeave] = function()
@@ -172,15 +175,6 @@ return function(props: TextButtonProps)
 				Thickness = 2,
 				Transparency = disabled and 0.5 or 0,
 			}) or nil,
-
-			Background = e("ImageLabel", {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				BackgroundTransparency = 1,
-				Image = backgroundImage,
-				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromScale(1.05, 1.225),
-				ZIndex = 0,
-			}),
 
 			TextLabel = e("TextLabel", {
 				Size = UDim2.fromScale(1, 1),

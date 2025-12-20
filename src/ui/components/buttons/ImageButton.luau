@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local React = require(ReplicatedStorage.Packages.React)
+local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
 
 local e = React.createElement
 
@@ -27,6 +28,7 @@ return function(props: ImageButtonProps)
 
 	local function handleClick()
 		if disabled then return end
+		SoundUtils.playButtonClick()
 		if props.OnClick then
 			props.OnClick()
 		end
@@ -67,6 +69,7 @@ return function(props: ImageButtonProps)
 		[React.Event.Activated] = handleClick,
 		[React.Event.MouseEnter] = function()
 			if disabled then return end
+			SoundUtils.playButtonHover()
 			animateScale(1.1)
 		end,
 		[React.Event.MouseLeave] = function()
@@ -88,7 +91,7 @@ return function(props: ImageButtonProps)
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
 			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
+			BorderSizePixel = 0
 		}, {
 			UICorner = e("UICorner", { CornerRadius = corner }),
 			UIStroke = stroke and e("UIStroke", {
@@ -99,6 +102,7 @@ return function(props: ImageButtonProps)
 			Image = e("ImageLabel", {
 				BackgroundTransparency = 1,
 				Size = UDim2.fromScale(1, 1),
+				ScaleType = Enum.ScaleType.Fit,
 				Image = selected and (props.SelectedImage or props.Image) or props.Image,
 			}),
 		}),
