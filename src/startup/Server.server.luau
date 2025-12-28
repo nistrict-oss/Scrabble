@@ -26,6 +26,7 @@ local StreakServiceServer = require(ServerScriptService.Services.StreakService.S
 local CodesServiceServer = require(ServerScriptService.Services.CodesService.CodesServiceServer)
 local DailyRewardsServiceServer = require(ServerScriptService.Services.DailyRewardsService.DailyRewardsServiceServer)
 local LeaderboardServiceServer = require(ServerScriptService.Services.LeaderboardService.LeaderboardServiceServer)
+local InventoryServiceServer = require(ServerScriptService.Services.InventoryService.InventoryServiceServer)
 local ChatTagServiceServer = require(ServerScriptService.Services.ChatTagService.ChatTagServiceServer)
 local PolicyServiceServer = require(ServerScriptService.Services.PolicyService.PolicyServiceServer)
 
@@ -43,6 +44,7 @@ PurchaseServiceServer:init()
 TasksServiceServer:init()
 StreakServiceServer:init()
 CodesServiceServer:init()
+InventoryServiceServer:init()
 DailyRewardsServiceServer:init({
 	CurrencyService = CurrencyServiceServer,
 	InventoryService = InventoryServiceServer,

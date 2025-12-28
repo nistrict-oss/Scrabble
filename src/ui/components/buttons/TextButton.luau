@@ -10,11 +10,15 @@ local e = React.createElement
 local STYLES = {
 	primary = GameConstants.Gradients.buttonActive,
 	secondary = GameConstants.Gradients.buttonInactive,
+	danger = {
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 100, 100)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(200, 50, 50)),
+	},
 }
 
 export type TextButtonProps = {
 	Text: string,
-	Variant: "primary" | "secondary" | "ghost"?,
+	Variant: "primary" | "secondary" | "ghost" | "danger"?,
 	BackgroundImage: string?,
 	Disabled: boolean?,
 	LayoutOrder: number?,
@@ -37,7 +41,9 @@ return function(props: TextButtonProps)
 	local style = STYLES[variant]
 
 	local function handleClick()
-		if disabled then return end
+		if disabled then
+			return
+		end
 		SoundUtils.playButtonClick()
 		if props.OnClick then
 			props.OnClick()
@@ -45,8 +51,10 @@ return function(props: TextButtonProps)
 	end
 
 	local function animateScale(targetScale)
-		if disabled or not frameRef.current then return end
-		
+		if disabled or not frameRef.current then
+			return
+		end
+
 		local tweenInfo = TweenInfo.new(
 			0.4, -- Duration
 			Enum.EasingStyle.Elastic, -- Bouncy easing
@@ -55,9 +63,9 @@ return function(props: TextButtonProps)
 			false,
 			0
 		)
-		
+
 		local tween = TweenService:Create(frameRef.current, tweenInfo, {
-			Size = UDim2.fromScale(targetScale, targetScale)
+			Size = UDim2.fromScale(targetScale, targetScale),
 		})
 		tween:Play()
 	end
@@ -76,26 +84,34 @@ return function(props: TextButtonProps)
 			ZIndex = props.ZIndex,
 			[React.Event.Activated] = handleClick,
 			[React.Event.MouseEnter] = function()
-				if disabled then return end
+				if disabled then
+					return
+				end
 				SoundUtils.playButtonHover()
 				animateScale(1.05)
 			end,
 			[React.Event.MouseLeave] = function()
-				if disabled then return end
+				if disabled then
+					return
+				end
 				animateScale(1)
 			end,
 			[React.Event.MouseButton1Down] = function()
-				if disabled then return end
+				if disabled then
+					return
+				end
 				animateScale(0.95)
 			end,
 			[React.Event.MouseButton1Up] = function()
-				if disabled then return end
+				if disabled then
+					return
+				end
 				animateScale(1.05)
 			end,
 		}, {
 			Content = e("Frame", {
 				ref = frameRef,
-				Size = UDim2.fromScale(1,1),
+				Size = UDim2.fromScale(1, 1),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromScale(0.5, 0.5),
 				BackgroundTransparency = 1,
@@ -106,11 +122,7 @@ return function(props: TextButtonProps)
 					Text = props.Text,
 					TextColor3 = Color3.new(1, 1, 1),
 					TextScaled = true,
-					FontFace = Font.new(
-						"rbxassetid://11702779517",
-						Enum.FontWeight.Heavy,
-						Enum.FontStyle.Italic
-					),
+					FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
 					TextTransparency = disabled and 0.5 or 0,
 				}, {
 					UIPadding = e("UIPadding", {
@@ -137,26 +149,34 @@ return function(props: TextButtonProps)
 		ZIndex = props.ZIndex,
 		[React.Event.Activated] = handleClick,
 		[React.Event.MouseEnter] = function()
-			if disabled then return end
+			if disabled then
+				return
+			end
 			SoundUtils.playButtonHover()
 			animateScale(1.05)
 		end,
 		[React.Event.MouseLeave] = function()
-			if disabled then return end
+			if disabled then
+				return
+			end
 			animateScale(1)
 		end,
 		[React.Event.MouseButton1Down] = function()
-			if disabled then return end
+			if disabled then
+				return
+			end
 			animateScale(0.95)
 		end,
 		[React.Event.MouseButton1Up] = function()
-			if disabled then return end
+			if disabled then
+				return
+			end
 			animateScale(1.05)
 		end,
 	}, {
 		Content = e("Frame", {
 			ref = frameRef,
-			Size = UDim2.fromScale(1,1),
+			Size = UDim2.fromScale(1, 1),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
 			BackgroundColor3 = Color3.new(1, 1, 1),
@@ -180,14 +200,10 @@ return function(props: TextButtonProps)
 				Size = UDim2.fromScale(1, 1),
 				BackgroundTransparency = 1,
 				Text = props.Text,
-				TextColor3 = Color3.new(1, 1, 1),
+				TextColor3 = disabled and Color3.fromRGB(150, 150, 150) or Color3.new(1, 1, 1),
 				TextScaled = true,
 				ZIndex = 2,
-				FontFace = Font.new(
-					"rbxassetid://11702779517",
-					Enum.FontWeight.Heavy,
-					Enum.FontStyle.Italic
-				),
+				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
 				TextTransparency = disabled and 0.5 or 0,
 			}, {
 				UIPadding = e("UIPadding", {

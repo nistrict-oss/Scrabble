@@ -215,8 +215,6 @@ function AnalyticsServiceServer:init()
 	Players.PlayerRemoving:Connect(function(player)
 		playerEventCounts[player.UserId] = nil
 	end)
-	
-	print("[AnalyticsService] Initialized")
 end
 
 return AnalyticsServiceServer

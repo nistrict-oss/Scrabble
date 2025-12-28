@@ -87,6 +87,9 @@
           "$className": "Folder",
           "Core": {
             "$className": "Folder",
+            "ColorUtils": {
+              "$path": "src/modules/core/ColorUtils.luau"
+            },
             "DataTemplate": {
               "$path": "src/modules/core/DataTemplate.luau"
             },
@@ -102,6 +105,12 @@
             "Codes": {
               "$path": "src/modules/game/Codes.luau"
             },
+            "Colors": {
+              "$path": "src/modules/game/Colors.luau"
+            },
+            "CPUService": {
+              "$path": "src/modules/game/CPUService.luau"
+            },
             "DailyRewards": {
               "$path": "src/modules/game/DailyRewards.luau"
             },
@@ -113,12 +122,6 @@
             },
             "ScrabbleDictionary": {
               "$path": "src/modules/game/ScrabbleDictionary"
-            }
-          },
-          "Math": {
-            "$className": "Folder",
-            "Evaluator": {
-              "$path": "src/modules/math/Evaluator.luau"
             }
           }
         }

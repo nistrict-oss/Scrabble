@@ -20,7 +20,11 @@ export type GameControlsProps = {
 	OnExchange: (() -> ())?,
 	OnCancelExchange: (() -> ())?,
 	OnClear: (() -> ())?,
+	OnShuffle: (() -> ())?,
+	OnResign: (() -> ())?,
 	CanPass: boolean?,
+	IsBusy: boolean?,
+	OnReportPlayButtonPosition: ((pos: Vector2) -> ())?,
 }
 
 return function(props: GameControlsProps)
@@ -28,7 +32,7 @@ return function(props: GameControlsProps)
 	local canSubmit = props.CanSubmit
 	local isExchangeMode = props.IsExchangeMode
 	local exchangeCount = props.ExchangeCount or 0
-	
+
 	-- Exchange mode shows different buttons
 	if isExchangeMode then
 		return e("Frame", {
@@ -46,7 +50,7 @@ return function(props: GameControlsProps)
 			UIPadding = e("UIPadding", {
 				PaddingBottom = UDim.new(0.3, 0),
 			}),
-			
+
 			Instruction = e("Frame", {
 				Size = UDim2.fromScale(0.35, 0.8),
 				BackgroundTransparency = 1,
@@ -58,14 +62,10 @@ return function(props: GameControlsProps)
 					Text = "Click tiles to exchange (" .. exchangeCount .. " selected)",
 					TextColor3 = Color3.new(1, 1, 1),
 					TextScaled = true,
-					FontFace = Font.new(
-						"rbxassetid://11702779517",
-						Enum.FontWeight.Medium,
-						Enum.FontStyle.Italic
-					),
+					FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Italic),
 				}),
 			}),
-			
+
 			CancelButton = e("Frame", {
 				Size = UDim2.fromScale(0.25, 0.8),
 				BackgroundTransparency = 1,
@@ -78,7 +78,7 @@ return function(props: GameControlsProps)
 					OnClick = props.OnCancelExchange,
 				}),
 			}),
-			
+
 			ConfirmButton = e("Frame", {
 				Size = UDim2.fromScale(0.3, 0.8),
 				BackgroundTransparency = 1,
@@ -94,7 +94,7 @@ return function(props: GameControlsProps)
 			}),
 		})
 	end
-	
+
 	-- Normal mode
 	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
@@ -111,9 +111,22 @@ return function(props: GameControlsProps)
 		UIPadding = e("UIPadding", {
 			PaddingBottom = UDim.new(0.3, 0),
 		}),
-		
+
+		LeaveButton = e("Frame", {
+			Size = UDim2.fromScale(0.15, 0.8),
+			BackgroundTransparency = 1,
+			LayoutOrder = 0,
+		}, {
+			Button = e(TextButton, {
+				Text = "Leave",
+				Variant = "danger",
+				Size = UDim2.fromScale(1, 1),
+				OnClick = props.OnResign,
+			}),
+		}),
+
 		ClearButton = e("Frame", {
-			Size = UDim2.fromScale(0.22, 0.8),
+			Size = UDim2.fromScale(0.16, 0.8),
 			BackgroundTransparency = 1,
 			LayoutOrder = 1,
 		}, {
@@ -121,29 +134,41 @@ return function(props: GameControlsProps)
 				Text = "Clear",
 				Variant = "secondary",
 				Size = UDim2.fromScale(1, 1),
-				-- Always allow clearing strategic placements
 				OnClick = props.OnClear,
 			}),
 		}),
-		
-		ExchangeButton = e("Frame", {
-			Size = UDim2.fromScale(0.22, 0.8),
+
+		ShuffleButton = e("Frame", {
+			Size = UDim2.fromScale(0.14, 0.8),
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 		}, {
 			Button = e(TextButton, {
-				Text = "Exchange",
+				Text = "Shuffle",
 				Variant = "secondary",
 				Size = UDim2.fromScale(1, 1),
-				Disabled = not isMyTurn,
-				OnClick = props.OnExchange,
+				OnClick = props.OnShuffle,
 			}),
 		}),
-		
-		PassButton = e("Frame", {
-			Size = UDim2.fromScale(0.22, 0.8),
+
+		ExchangeButton = e("Frame", {
+			Size = UDim2.fromScale(0.14, 0.8),
 			BackgroundTransparency = 1,
 			LayoutOrder = 3,
+		}, {
+			Button = e(TextButton, {
+				Text = "Swap",
+				Variant = "secondary",
+				Size = UDim2.fromScale(1, 1),
+				Disabled = not isMyTurn or props.IsBusy,
+				OnClick = if props.IsBusy then nil else props.OnExchange,
+			}),
+		}),
+
+		PassButton = e("Frame", {
+			Size = UDim2.fromScale(0.14, 0.8),
+			BackgroundTransparency = 1,
+			LayoutOrder = 4,
 		}, {
 			Button = e(TextButton, {
 				Text = "Pass",
@@ -153,14 +178,19 @@ return function(props: GameControlsProps)
 				OnClick = props.OnPass,
 			}),
 		}),
-		
+
 		SubmitButton = e("Frame", {
-			Size = UDim2.fromScale(0.3, 0.8),
+			Size = UDim2.fromScale(0.16, 0.8),
 			BackgroundTransparency = 1,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
+			[React.Change.AbsolutePosition] = function(rbx)
+				if props.OnReportPlayButtonPosition then
+					props.OnReportPlayButtonPosition(rbx.AbsolutePosition + rbx.AbsoluteSize / 2)
+				end
+			end,
 		}, {
 			Button = e(TextButton, {
-				Text = "Submit",
+				Text = "Play",
 				Variant = "primary",
 				Size = UDim2.fromScale(1, 1),
 				Disabled = not isMyTurn or not canSubmit,
@@ -169,4 +199,3 @@ return function(props: GameControlsProps)
 		}),
 	})
 end
-

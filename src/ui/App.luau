@@ -21,7 +21,16 @@ local SettingsScreen = require(ReplicatedStorage.UI.screens.HomeScreen.Settings)
 -- Game screen components
 local LobbyScreen = require(ReplicatedStorage.UI.screens.GameScreen.Lobby)
 local GameScreen = require(ReplicatedStorage.UI.screens.GameScreen.Game)
-local TransitionFrame = require(ReplicatedStorage.UI.components.frames.TransitionFrame)
+local LoadingScreen = require(ReplicatedStorage.UI.screens.LoadingScreen)
+local TransitionFrameModule = require(ReplicatedStorage.UI.components.frames.TransitionFrame)
+local TransitionFrame = TransitionFrameModule.TransitionFrame
+local DailyRewardsScreen = require(ReplicatedStorage.UI.screens.DailyRewards)
+local GameBackground = require(ReplicatedStorage.UI.components.frames.GameBackground)
+local NotificationProvider = require(ReplicatedStorage.UI.components.notifications.NotificationProvider)
+local NotificationContainer = require(ReplicatedStorage.UI.components.notifications.NotificationContainer)
+
+-- Services
+local DailyRewardsService = require(ReplicatedStorage.Shared.Services.DailyRewardsService.DailyRewardsServiceClient)
 
 -- Scrabble state management
 local GameStateHook = require(ReplicatedStorage.UI.hooks.useGameState)
@@ -48,22 +57,10 @@ local ScoreEffectManager = require(ReplicatedStorage.UI.components.game.ScoreEff
 -- Inner app that uses Scrabble context
 local function AppContent()
 	local scrabbleState = useScrabbleState()
+
 	local activeTab, setActiveTab = React.useState("Servers")
-
-	-- Global Background Animation State
-	local bgHue, setBgHue = React.useBinding(0.55) -- Light Blue start
-	local bgRotation, setBgRotation = React.useBinding(0)
-
-	React.useEffect(function()
-		local RunService = game:GetService("RunService")
-		local connection = RunService.RenderStepped:Connect(function(dt)
-			setBgHue((bgHue:getValue() + dt * 0.003) % 100)
-			setBgRotation((bgRotation:getValue() + dt * 3) % 360) -- Very slow rotation
-		end)
-		return function()
-			connection:Disconnect()
-		end
-	end, {})
+	local isLoading, setIsLoading = React.useState(true)
+	local showDailyRewards, setShowDailyRewards = React.useState(false)
 
 	local lobby = scrabbleState.lobby
 	local game = scrabbleState.game
@@ -86,7 +83,10 @@ local function AppContent()
 	-- Main Routing
 	local routingKey = "Home"
 	local currentWeight = 1
-	if game then
+	if isLoading then
+		routingKey = "Loading"
+		currentWeight = 0
+	elseif game then
 		routingKey = "Game_" .. (game.Phase or "unknown")
 		currentWeight = 3
 	elseif lobby then
@@ -109,8 +109,23 @@ local function AppContent()
 	local mainContent = nil
 	local isGame = string.find(routingKey, "Game")
 	local isLobby = routingKey == "Lobby"
+	local isLanding = routingKey == "Loading"
 
-	if isGame then
+	if isLanding then
+		mainContent = e(LoadingScreen, {
+			OnFinished = function()
+				-- Check for daily rewards
+				task.spawn(function()
+					if DailyRewardsService:shouldShowPopup() then
+						setShowDailyRewards(true)
+					end
+				end)
+
+				-- Lobby music is already playing, just transition to home screen
+				setIsLoading(false)
+			end,
+		})
+	elseif isGame then
 		mainContent = e(GameScreen, {
 			GameState = game,
 			LobbyState = lobby,
@@ -152,7 +167,6 @@ local function AppContent()
 				ActiveTab = activeTab,
 				OnTabChange = onTabChange,
 				ZIndex = 11,
-				BackgroundHue = bgHue,
 			}),
 
 			TabTransition = e(TransitionFrame, {
@@ -169,10 +183,20 @@ local function AppContent()
 	local scoreManagerRef = React.useRef(nil)
 
 	local scoreSpawn = React.useCallback(function(...)
-		if scoreManagerRef.current then
+		if scoreManagerRef.current and game and game.Phase == "inGame" then
 			scoreManagerRef.current.spawn(...)
 		end
-	end, {})
+	end, { game and game.Phase })
+
+	-- Clear effects when game ends or phase changes
+	React.useEffect(function()
+		local phase = game and game.Phase
+		if not game or phase ~= "inGame" then
+			if scoreManagerRef.current then
+				scoreManagerRef.current.clear()
+			end
+		end
+	end, { game and game.Phase })
 
 	return e("ScreenGui", {
 		Enabled = true,
@@ -181,33 +205,7 @@ local function AppContent()
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	}, {
 		-- Persistent High-Level Background
-		AppBackground = e("Frame", {
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = -1,
-		}, {
-			UIGradient = e("UIGradient", {
-				Rotation = bgRotation,
-				Color = bgHue:map(function(h)
-					local baseH = h % 1
-					local baseS = 0.850
-					local baseV = 1.000
-
-					return ColorSequence.new({
-						ColorSequenceKeypoint.new(0, Color3.fromHSV(baseH, baseS, baseV)),
-						ColorSequenceKeypoint.new(1, Color3.fromHSV((baseH + 0.05) % 1, baseS - 0.1, baseV)),
-					})
-				end),
-			}),
-			Decoration = e("ImageLabel", {
-				BackgroundTransparency = 1,
-				Image = "rbxassetid://78034675625122",
-				Position = UDim2.fromScale(-0.147917, -0.39537),
-				Size = UDim2.fromScale(1.50625, 2.24722),
-				ZIndex = 0,
-				ImageColor3 = Color3.new(1, 1, 1),
-				ImageTransparency = 0.8, -- Subtle
-			}),
-		}),
+		AppBackground = e(GameBackground, { ZIndex = -10 }),
 
 		-- Content wrapped in ScoreContext
 		Content = e(ScoreContext.Provider, {
@@ -221,16 +219,29 @@ local function AppContent()
 			}, mainContent),
 		}),
 
+		-- Daily Rewards Overlay
+		DailyRewards = e(DailyRewardsScreen, {
+			Visible = showDailyRewards,
+			OnClose = function()
+				setShowDailyRewards(false)
+			end,
+		}),
+
 		-- Score Effects ON TOP of everything
 		ScoreEffects = e(ScoreEffectManager, {
 			ref = scoreManagerRef,
 		}),
+
+		-- Toast Notifications ON TOP of everything
+		Notifications = e(NotificationContainer),
 	})
 end
 
--- Main App wrapped with ScrabbleProvider
+-- Main App wrapped with ScrabbleProvider and NotificationProvider
 return function()
-	return e(ScrabbleProvider, {}, {
-		AppContent = e(AppContent),
+	return e(NotificationProvider, {}, {
+		App = e(ScrabbleProvider, {}, {
+			AppContent = e(AppContent),
+		}),
 	})
 end

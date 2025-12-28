@@ -3,15 +3,23 @@
 
 local DailyRewards = {}
 
--- Reward types: "cash", "luckyspin"
+local COIN_ICON = "rbxassetid://76014729251663"
+
+-- Reward types: "coins"
 DailyRewards.REWARDS = {
-	[1] = { type = "cash", amount = 500, icon = "💵", label = "500 Cash" },
-	[2] = { type = "cash", amount = 750, icon = "💵", label = "750 Cash" },
-	[3] = { type = "cash", amount = 1000, icon = "💵", label = "1,000 Cash" },
-	[4] = { type = "luckyspin", amount = 1, icon = "🍀", label = "1 Lucky Spin" },
-	[5] = { type = "cash", amount = 1500, icon = "💵", label = "1,500 Cash" },
-	[6] = { type = "cash", amount = 2000, icon = "💵", label = "2,000 Cash" },
-	[7] = { type = "cash", amount = 3000, icon = "🎁", label = "3,000 Cash + Lucky Spin", bonus = { type = "luckyspin", amount = 1 } },
+	[1] = { type = "coins", amount = 500, icon = COIN_ICON, label = "500 Coins" },
+	[2] = { type = "coins", amount = 750, icon = COIN_ICON, label = "750 Coins" },
+	[3] = { type = "coins", amount = 1000, icon = COIN_ICON, label = "1,000 Coins" },
+	[4] = { type = "coins", amount = 1250, icon = COIN_ICON, label = "1,250 Coins" },
+	[5] = { type = "coins", amount = 1500, icon = COIN_ICON, label = "1,500 Coins" },
+	[6] = { type = "coins", amount = 2000, icon = COIN_ICON, label = "2,000 Coins" },
+	[7] = {
+		type = "coins",
+		amount = 5000,
+		icon = COIN_ICON,
+		label = "5,000 Coins",
+		-- No bonus logic needed for now if it's just a big coin drop
+	},
 }
 
 DailyRewards.MAX_STREAK = 7 -- After 7, cycle back to day 1 with higher multiplier
@@ -48,7 +56,7 @@ function DailyRewards.formatTime(seconds: number): string
 	local hours = math.floor(seconds / 3600)
 	local minutes = math.floor((seconds % 3600) / 60)
 	local secs = seconds % 60
-	
+
 	if hours > 0 then
 		return string.format("%dh %dm", hours, minutes)
 	elseif minutes > 0 then
@@ -59,4 +67,3 @@ function DailyRewards.formatTime(seconds: number): string
 end
 
 return DailyRewards
-

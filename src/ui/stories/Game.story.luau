@@ -10,13 +10,14 @@ local UserId = LocalPlayer and LocalPlayer.UserId or 1001
 local mockGameState = {
 	Phase = "inGame",
 	-- Simple board with one word "HELLO" at center (8,8) to (8,12)
+	-- Each tile has letter and owner's colors
 	Board = {
 		[8] = {
-			[8] = "H",
-			[9] = "E",
-			[10] = "L",
-			[11] = "L",
-			[12] = "O",
+			[8] = { letter = "H", colors = { Tile = "ocean", Text = "snow", Stroke = "ocean" } },
+			[9] = { letter = "E", colors = { Tile = "ocean", Text = "snow", Stroke = "ocean" } },
+			[10] = { letter = "L", colors = { Tile = "ocean", Text = "snow", Stroke = "ocean" } },
+			[11] = { letter = "L", colors = { Tile = "ocean", Text = "snow", Stroke = "ocean" } },
+			[12] = { letter = "O", colors = { Tile = "ocean", Text = "snow", Stroke = "ocean" } },
 		},
 	},
 	Rack = { "S", "C", "R", "A", "B", "B", "L" },

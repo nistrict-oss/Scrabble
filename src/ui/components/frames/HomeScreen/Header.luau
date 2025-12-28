@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local React = require(ReplicatedStorage.Packages.React)
 local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local ImageButton = require(ReplicatedStorage.UI.components.buttons.ImageButton)
+local useCurrency = require(ReplicatedStorage.UI.hooks.useCurrency)
 
 local e = React.createElement
 
@@ -26,6 +27,7 @@ end
 return function(props)
 	local activeTab = props.ActiveTab or "Customization"
 	local onTabChange = props.OnTabChange
+	local coins = useCurrency()
 
 	local player = Players.LocalPlayer
 	local displayName = player and ("@" .. player.Name) or "@Player"
@@ -145,7 +147,8 @@ return function(props)
 				Position = UDim2.fromScale(0.457143, 0.173333),
 				RichText = true,
 				Size = UDim2.fromScale(0.4, 0.653333),
-				Text = "10000",
+				-- Use commas for formatting
+				Text = tostring(coins):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""),
 				TextColor3 = Color3.new(1, 1, 1),
 				TextScaled = true,
 				TextYAlignment = Enum.TextYAlignment.Top,
@@ -225,7 +228,7 @@ return function(props)
 				}),
 			}),
 
-			uIAspectRatioConstraint = e("UIAspectRatioConstraint"),
+			uIAspectRatioConstraint = e("UIAspectRatioConstraint", {}),
 		}),
 	})
 end

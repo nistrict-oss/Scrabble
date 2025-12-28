@@ -5,30 +5,20 @@ local UserInputService = game:GetService("UserInputService")
 local Networker = require(ReplicatedStorage.Packages.Networker)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 
--- Detect if on mobile device (show keypad by default on mobile only)
-local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-
 local SettingsServiceClient = {
 	Networker = nil,
 	Settings = {
-		MusicEnabled = true,
-		SFXEnabled = true,
-		MusicVolume = 0.7,
+		LobbyMusicVolume = 0.5,
+		GameMusicVolume = 0.3,
 		SFXVolume = 0.8,
 		ShowStreaks = true,
-		ShowTableInfo = true,
-		ShowKeypad = isMobile, -- Only show keypad by default on mobile
-		ScreenShakeEnabled = true, -- Screen shake on incorrect answers
-		-- Keybinds
-		KeyAdd = "A",
-		KeySubtract = "S",
-		KeyMultiply = "M",
-		KeyDivide = "D",
+		ShowTilePoints = true,
+		ConfirmMoves = false,
 	},
-	
+
 	-- Tutorial state
 	TutorialCompleted = false,
-	
+
 	OnSettingsLoaded = Signal.new(),
 	OnSettingUpdated = Signal.new(),
 	OnTutorialStatusChanged = Signal.new(),
@@ -40,7 +30,7 @@ export type SettingsServiceClient = typeof(SettingsServiceClient) & {
 
 function SettingsServiceClient.init(self: SettingsServiceClient)
 	self.Networker = Networker.client.new("SettingsService", self)
-	
+
 	task.defer(function()
 		self.Networker:fire("GetSettings")
 		self.Networker:fire("GetTutorialStatus")
@@ -50,12 +40,12 @@ end
 function SettingsServiceClient.applySettings(self: SettingsServiceClient)
 	local musicGroup = SoundService:FindFirstChild("Music")
 	if musicGroup then
-		musicGroup.Volume = self.Settings.MusicEnabled and self.Settings.MusicVolume or 0
+		musicGroup.Volume = 1 -- Volume now controlled per-sound or by group if it was master
 	end
-	
+
 	local sfxGroup = SoundService:FindFirstChild("SFX")
 	if sfxGroup then
-		sfxGroup.Volume = self.Settings.SFXEnabled and self.Settings.SFXVolume or 0
+		sfxGroup.Volume = self.Settings.SFXVolume or 0.8
 	end
 end
 
@@ -76,7 +66,7 @@ function SettingsServiceClient.SettingUpdated(self: SettingsServiceClient, setti
 end
 
 function SettingsServiceClient.getSettings(self: SettingsServiceClient): any
-	return self.Settings
+	return table.clone(self.Settings)
 end
 
 function SettingsServiceClient.getSetting(self: SettingsServiceClient, settingName: string): any?
@@ -86,22 +76,14 @@ end
 function SettingsServiceClient.updateSetting(self: SettingsServiceClient, settingName: string, value: any)
 	self.Settings[settingName] = value
 	self:applySettings()
-	
+
 	self.Networker:fire("UpdateSetting", settingName, value)
-	
+
 	self.OnSettingUpdated:Fire(settingName, value)
 end
 
 function SettingsServiceClient.resetSettings(self: SettingsServiceClient)
 	self.Networker:fire("ResetSettings")
-end
-
-function SettingsServiceClient.isMusicEnabled(self: SettingsServiceClient): boolean
-	return self.Settings.MusicEnabled == true
-end
-
-function SettingsServiceClient.isSFXEnabled(self: SettingsServiceClient): boolean
-	return self.Settings.SFXEnabled == true
 end
 
 function SettingsServiceClient.showStreaks(self: SettingsServiceClient): boolean
@@ -120,7 +102,7 @@ function SettingsServiceClient.isScreenShakeEnabled(self: SettingsServiceClient)
 	return self.Settings.ScreenShakeEnabled ~= false
 end
 
-function SettingsServiceClient.getKeybinds(self: SettingsServiceClient): {[string]: string}
+function SettingsServiceClient.getKeybinds(self: SettingsServiceClient): { [string]: string }
 	return {
 		Add = self.Settings.KeyAdd or "A",
 		Subtract = self.Settings.KeySubtract or "S",

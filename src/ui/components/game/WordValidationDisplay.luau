@@ -57,10 +57,10 @@ return function(props: WordValidationDisplayProps)
 		if #multipliers > 0 then
 			statusText = statusText .. " • " .. table.concat(multipliers, ", ")
 		end
-	elseif #invalidWords > 0 then
-		statusText = "Invalid: " .. table.concat(invalidWords, ", ")
 	elseif errorMsg then
 		statusText = errorMsg
+	elseif #invalidWords > 0 then
+		statusText = "Invalid: " .. table.concat(invalidWords, ", ")
 	else
 		statusText = word .. " - Invalid"
 	end

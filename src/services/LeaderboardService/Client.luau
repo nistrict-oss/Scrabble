@@ -13,21 +13,20 @@ local Signal = require(ReplicatedStorage.Packages.Signal)
 type LeaderboardEntry = {
 	Rank: number,
 	UserId: number,
-	DisplayName: string, 
+	DisplayName: string,
 	Value: number,
 }
 
 local LeaderboardServiceClient = {
 	Networker = nil :: any,
-	
-	WinsLeaderboard = {} :: {LeaderboardEntry},
-	ElimsLeaderboard = {} :: {LeaderboardEntry},
-	StreakLeaderboard = {} :: {LeaderboardEntry},
-	DonationsLeaderboard = {} :: {LeaderboardEntry},
-	
+
+	WinsLeaderboard = {} :: { LeaderboardEntry },
+	WordsLeaderboard = {} :: { LeaderboardEntry },
+	PointsLeaderboard = {} :: { LeaderboardEntry },
+
 	-- Track if we've received valid data
 	HasReceivedData = false,
-	
+
 	OnLeaderboardsUpdated = Signal.new(),
 }
 
@@ -35,73 +34,69 @@ export type LeaderboardServiceClient = typeof(LeaderboardServiceClient)
 
 function LeaderboardServiceClient.init(self: LeaderboardServiceClient)
 	self.Networker = Networker.client.new("LeaderboardService", self)
-	
+
 	-- Request initial data with retry logic (after player is loaded)
 	task.spawn(function()
-		-- Wait for the local player to exist and be ready
+		-- Wait for the local player to exist
 		local player = Players.LocalPlayer
 		if not player then
 			player = Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
 			player = Players.LocalPlayer
 		end
-		
-		-- Wait for character to load (indicates player is fully in the game)
-		if not player.Character then
-			player.CharacterAdded:Wait()
-		end
-		
-		-- Small additional delay to ensure everything is stable
-		task.wait(1)
-		
+
+		print("[LeaderboardService] Starting fetch loop for player:", player.Name)
+
+		-- Removed Character wait as it blocks UI loading if no character is present
+
 		local maxRetries = 10
 		local retryDelay = 2
-		
-		for _ = 1, maxRetries do
+
+		for i = 1, maxRetries do
+			print("[LeaderboardService] Requesting leaderboards (Attempt " .. i .. ")")
 			self.Networker:fire("GetLeaderboards")
-			
+
 			-- Wait for response
 			task.wait(retryDelay)
-			
+
 			-- Check if we got valid data
 			if self.HasReceivedData then
+				print("[LeaderboardService] Received data, stopping loop")
 				break
 			end
-			
+
 			-- Increase delay for next retry
 			retryDelay = math.min(retryDelay * 1.5, 10)
 		end
 	end)
 end
 
-function LeaderboardServiceClient.LeaderboardsUpdated(self: LeaderboardServiceClient, wins: {LeaderboardEntry}, elims: {LeaderboardEntry}, streaks: {LeaderboardEntry}, donations: {LeaderboardEntry}?)
+function LeaderboardServiceClient.LeaderboardsUpdated(
+	self: LeaderboardServiceClient,
+	wins: { LeaderboardEntry },
+	words: { LeaderboardEntry },
+	points: { LeaderboardEntry }
+)
+	print("[LeaderboardService] Client received update with", #wins, "wins", #words, "words", #points, "points")
 	self.WinsLeaderboard = wins or {}
-	self.ElimsLeaderboard = elims or {}
-	self.StreakLeaderboard = streaks or {}
-	self.DonationsLeaderboard = donations or {}
-	
-	-- Mark as received if we got any data
-	if #self.WinsLeaderboard > 0 or #self.ElimsLeaderboard > 0 or #self.StreakLeaderboard > 0 or #self.DonationsLeaderboard > 0 then
-		self.HasReceivedData = true
-	end
-	
-	self.OnLeaderboardsUpdated:Fire(self.WinsLeaderboard, self.ElimsLeaderboard, self.StreakLeaderboard, self.DonationsLeaderboard)
+	self.WordsLeaderboard = words or {}
+	self.PointsLeaderboard = points or {}
+
+	-- Mark as received since we got a valid response from server
+	self.HasReceivedData = true
+
+	self.OnLeaderboardsUpdated:Fire(self.WinsLeaderboard, self.WordsLeaderboard, self.PointsLeaderboard)
 end
 
-function LeaderboardServiceClient.getWinsLeaderboard(self: LeaderboardServiceClient): {LeaderboardEntry}
+function LeaderboardServiceClient.getWinsLeaderboard(self: LeaderboardServiceClient): { LeaderboardEntry }
 	return self.WinsLeaderboard
 end
 
-function LeaderboardServiceClient.getElimsLeaderboard(self: LeaderboardServiceClient): {LeaderboardEntry}
-	return self.ElimsLeaderboard
+function LeaderboardServiceClient.getWordsLeaderboard(self: LeaderboardServiceClient): { LeaderboardEntry }
+	return self.WordsLeaderboard
 end
 
-function LeaderboardServiceClient.getStreakLeaderboard(self: LeaderboardServiceClient): {LeaderboardEntry}
-	return self.StreakLeaderboard
-end
-
-function LeaderboardServiceClient.getDonationsLeaderboard(self: LeaderboardServiceClient): {LeaderboardEntry}
-	return self.DonationsLeaderboard
+function LeaderboardServiceClient.getPointsLeaderboard(self: LeaderboardServiceClient): { LeaderboardEntry }
+	return self.PointsLeaderboard
 end
 
 return LeaderboardServiceClient
-

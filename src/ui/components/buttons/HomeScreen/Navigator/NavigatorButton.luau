@@ -20,10 +20,9 @@ return function(props: NavigatorButtonProps)
 		SelectedImage = props.ImageSelected,
 		Selected = props.Selected,
 		LayoutOrder = props.LayoutOrder,
-		Size = props.Size or UDim2.fromOffset(90, 90),
+		Size = props.Size or UDim2.fromScale(0.12, 0.12),
 		CornerRadius = UDim.new(0.15, 0),
 		OnClick = props.OnClick,
 		ScaleType = Enum.ScaleType.Fit,
 	})
 end
-

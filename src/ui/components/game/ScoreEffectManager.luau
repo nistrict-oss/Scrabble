@@ -53,6 +53,9 @@ return React.forwardRef(function(_, ref)
 					return next
 				end)
 			end,
+			clear = function()
+				setParticles({})
+			end,
 		}
 	end, {})
 

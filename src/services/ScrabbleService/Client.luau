@@ -22,6 +22,7 @@ local ScrabbleServiceClient = {
 	OnLobbies = Signal.new(),
 	OnLobbyState = Signal.new(),
 	OnGameState = Signal.new(),
+	OnSystemMessage = Signal.new(),
 	OnError = Signal.new(),
 }
 
@@ -40,10 +41,15 @@ function ScrabbleServiceClient:init()
 end
 
 -- Outbound actions
-function ScrabbleServiceClient:createLobby(name: string, maxPlayers: number, isPrivate: boolean, code: string?, turnTimer: number?)
-	if self.Networker then
-		self.Networker:fire("CreateLobby", name, maxPlayers, isPrivate, code, turnTimer)
-	end
+function ScrabbleServiceClient:createLobby(
+	name: string,
+	maxPlayers: number,
+	isPrivate: boolean,
+	code: string?,
+	timerSeconds: number?,
+	settings: { StarDoublesPoints: boolean? }?
+)
+	self.Networker:fire("CreateLobby", name, maxPlayers, isPrivate, code, timerSeconds, settings)
 end
 
 function ScrabbleServiceClient:joinLobby(idOrCode: string)
@@ -63,7 +69,7 @@ function ScrabbleServiceClient:leaveLobby()
 	self.CurrentGame = nil
 	self.OnLobbyState:Fire(nil)
 	self.OnGameState:Fire(nil)
-	
+
 	if self.Networker then
 		self.Networker:fire("LeaveLobby")
 	end
@@ -81,7 +87,10 @@ function ScrabbleServiceClient:startGame()
 	end
 end
 
-function ScrabbleServiceClient:placeWord(placedTiles: { { row: number, col: number, letter: string } }, direction: string)
+function ScrabbleServiceClient:placeWord(
+	placedTiles: { { row: number, col: number, letter: string } },
+	direction: string
+)
 	if self.Networker then
 		self.Networker:fire("PlaceWord", {
 			placedTiles = placedTiles,
@@ -97,12 +106,12 @@ function ScrabbleServiceClient:passTurn()
 end
 
 function ScrabbleServiceClient:exchangeTiles(exchangeData: { Letters: { string }, Indices: { number } })
-    if self.Networker then
-        self.Networker:fire("ExchangeTiles", {
-            Letters = exchangeData.Letters,
-            Indices = exchangeData.Indices
-        })
-    end
+	if self.Networker then
+		self.Networker:fire("ExchangeTiles", {
+			Letters = exchangeData.Letters,
+			Indices = exchangeData.Indices,
+		})
+	end
 end
 
 function ScrabbleServiceClient:resign()
@@ -143,6 +152,7 @@ end
 
 function ScrabbleServiceClient.GameState(self, state: any)
 	-- Reconstruct board from BoardTiles (network-safe format)
+	-- Each tile now includes colors for global cosmetic visibility
 	if state and state.BoardTiles then
 		local board = {}
 		for r = 1, 15 do
@@ -151,16 +161,21 @@ function ScrabbleServiceClient.GameState(self, state: any)
 				board[r][c] = nil
 			end
 		end
-		
+
 		for _, tile in ipairs(state.BoardTiles) do
 			if tile.r and tile.c and tile.letter then
-				board[tile.r][tile.c] = tile.letter
+				-- Store full tile data: letter + owner's colors + blank status
+				board[tile.r][tile.c] = {
+					letter = tile.letter,
+					colors = tile.colors, -- { Tile: string, Text: string, Stroke: string }
+					isBlank = tile.isBlank, -- true for blank tiles (worth 0 points)
+				}
 			end
 		end
-		
+
 		state.Board = board
 	end
-	
+
 	self.CurrentGame = state
 	self.OnGameState:Fire(state)
 end
@@ -169,5 +184,8 @@ function ScrabbleServiceClient.Error(self, message: string)
 	self.OnError:Fire(message or "Unknown error")
 end
 
-return ScrabbleServiceClient
+function ScrabbleServiceClient.ChatMessage(self, message: string)
+	self.OnSystemMessage:Fire(message)
+end
 
+return ScrabbleServiceClient

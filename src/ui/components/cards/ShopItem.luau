@@ -1,7 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local React = require(ReplicatedStorage.Packages.React)
 local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
-local ImageButton = require(ReplicatedStorage.UI.components.buttons.ImageButton)
 
 local e = React.createElement
 
@@ -29,7 +28,6 @@ local TYPE_COLORS = {
 	},
 }
 
-
 export type ShopItemProps = {
 	Name: string,
 	Category: string,
@@ -40,22 +38,24 @@ export type ShopItemProps = {
 	Position: UDim2?,
 	LayoutOrder: number?,
 	OnPurchase: (() -> ())?,
+	SkinContent: any?,
 }
 
 return function(props: ShopItemProps)
 	local typeConfig = TYPE_COLORS[props.Type] or TYPE_COLORS.Currency
 	local isRobux = props.PriceType == "Robux"
+	local isCurrency = props.Type == "Currency"
 
 	return e("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
+		AnchorPoint = Vector2.new(0, 0.5),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		Position = props.Position,
-		Size = UDim2.fromScale(0.258732, 0.993485),
+		Size = UDim2.new(0, 140, 0.92, 0), -- Fixed pixel width, scale height
 		LayoutOrder = props.LayoutOrder,
 		ZIndex = 0,
 	}, {
 		uICorner = e("UICorner", {
-			CornerRadius = UDim.new(0.037307, 0),
+			CornerRadius = UDim.new(0.05, 0),
 		}),
 
 		uIGradient = e("UIGradient", {
@@ -71,92 +71,81 @@ return function(props: ShopItemProps)
 			Thickness = 2,
 		}),
 
+		-- Category/Bonus label at top
+		categoryLabel = e("TextLabel", {
+			Size = UDim2.fromScale(0.9, 0.1),
+			Position = UDim2.fromScale(0.5, 0.08),
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundTransparency = 1,
+			Text = props.Category or "",
+			TextColor3 = Color3.new(1, 1, 1),
+			TextScaled = true,
+			ZIndex = 5,
+			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Italic),
+		}, {
+			UIStroke = e("UIStroke", {
+				Color = typeConfig.stroke,
+				Thickness = 1.5,
+			}),
+		}),
+
+		-- Name label (coin amount for currency)
+		nameLabel = e("TextLabel", {
+			Size = UDim2.fromScale(0.9, 0.12),
+			Position = UDim2.fromScale(0.5, 0.72),
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundTransparency = 1,
+			Text = props.Name,
+			TextColor3 = Color3.new(1, 1, 1),
+			TextScaled = true,
+			ZIndex = 5,
+			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Normal),
+		}, {
+			UIStroke = e("UIStroke", {
+				Color = typeConfig.stroke,
+				Thickness = 2,
+			}),
+		}),
+
+		-- Purchase button at bottom
 		purchaseButton = e(TextButton, {
 			Text = (if isRobux then "R$ " else "") .. props.Price,
 			Variant = "primary",
-			Size = UDim2.fromScale(0.994852, 0.131148),
-			Position = UDim2.fromScale(0.5, 0.934426),
+			Size = UDim2.fromScale(0.85, 0.1),
+			Position = UDim2.fromScale(0.5, 0.92),
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			CornerRadius = UDim.new(0.1875, 0),
+			CornerRadius = UDim.new(0.3, 0),
 			OnClick = props.OnPurchase or function() end,
 		}),
 
-		price = e("TextLabel", {
+		-- Icon for currency items (coin stack visual) - centered
+		icon = isCurrency and e("ImageLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 1,
-			FontFace = Font.new(
-				"rbxassetid://11702779517",
-				Enum.FontWeight.Heavy,
-				Enum.FontStyle.Italic
-			),
-			Position = UDim2.fromScale(0.5, 0.752459),
-			RichText = true,
-			Size = UDim2.fromScale(0.223842, 0.0721311),
-			Text = props.Price,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextScaled = true,
-		}, {
-			uIStroke = e("UIStroke", {
-				Color = typeConfig.stroke,
-				Thickness = 5,
-			}),
-
-			uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-				AspectRatio = 2.04545,
-			}),
-
-			uIPadding = e("UIPadding", {
-				PaddingBottom = UDim.new(0.0909091, 0),
-				PaddingTop = UDim.new(0.0909091, 0),
-			}),
-		}),
-
-		category = e("TextLabel", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			FontFace = Font.new(
-				"rbxassetid://11702779517",
-				Enum.FontWeight.ExtraBold,
-				Enum.FontStyle.Normal
-			),
-			Position = UDim2.fromScale(0.50125, 0.820492),
-			RichText = true,
-			Size = UDim2.fromScale(0.176586, 0.047541),
-			Text = props.Category,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextScaled = true,
-			ZIndex = 2,
-		}, {
-			uIStroke = e("UIStroke", {
-				Color = typeConfig.stroke,
-				Thickness = 5,
-			}),
-
-			uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-				AspectRatio = 2.44828,
-			}),
-
-			uIPadding = e("UIPadding", {
-				PaddingBottom = UDim.new(0.0862069, 0),
-				PaddingTop = UDim.new(0.0862069, 0),
-			}),
-		}),
-
-		icon = props.Icon and e("ImageLabel", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Image = props.Icon,
-			Position = UDim2.fromScale(0.5025, 0.429508),
-			Size = UDim2.fromScale(0.591937, 0.239344),
+			Image = props.Icon or "rbxassetid://6034684930",
+			Position = UDim2.fromScale(0.5, 0.4),
+			Size = UDim2.fromScale(0.5, 0.35),
+			ScaleType = Enum.ScaleType.Fit,
 			ZIndex = 3,
 		}) or nil,
 
-		skin = not props.Icon and e("ViewportFrame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.49875, 0.45),
-			Size = UDim2.fromScale(0.8, 0.5),
-			ZIndex = 0,
-		}) or nil,
+		-- Skin preview for non-currency items - centered
+		skin = not isCurrency
+				and e("Frame", {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					BackgroundTransparency = 1,
+					Position = UDim2.fromScale(0.5, 0.4),
+					Size = UDim2.fromScale(0.7, 0.4),
+					ZIndex = 0,
+				}, {
+					-- Centered wrapper for LetterTile
+					CenterWrapper = e("Frame", {
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						BackgroundTransparency = 1,
+						Position = UDim2.fromScale(0.5, 0.5),
+						Size = UDim2.fromScale(1, 1),
+					}, props.SkinContent),
+				})
+			or nil,
 	})
 end

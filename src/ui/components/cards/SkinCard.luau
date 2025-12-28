@@ -24,7 +24,6 @@ local RARITY_COLORS = {
 	},
 }
 
-
 export type SkinCardProps = {
 	Name: string,
 	Rarity: "Common" | "Rare" | "Epic" | "Legendary",
@@ -32,6 +31,7 @@ export type SkinCardProps = {
 	Position: UDim2?,
 	LayoutOrder: number?,
 	OnEquip: (() -> ())?,
+	children: any?,
 }
 
 return function(props: SkinCardProps)
@@ -39,15 +39,15 @@ return function(props: SkinCardProps)
 	local isEquipped = props.IsEquipped == true
 
 	return e("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
+		AnchorPoint = Vector2.new(0, 0.5),
 		BackgroundColor3 = Color3.new(1, 1, 1),
 		Position = props.Position,
-		Size = UDim2.fromScale(0.259403, 0.993485),
+		Size = UDim2.new(0, 140, 0.92, 0), -- Fixed pixel width, scale height
 		LayoutOrder = props.LayoutOrder,
 		ZIndex = 0,
 	}, {
 		uICorner = e("UICorner", {
-			CornerRadius = UDim.new(0.0373065, 0),
+			CornerRadius = UDim.new(0.05, 0),
 		}),
 
 		uIGradient = e("UIGradient", {
@@ -64,26 +64,21 @@ return function(props: SkinCardProps)
 		}),
 
 		equipButton = e(TextButton, {
-			Text = if isEquipped then "Unequip" else "Equip",
+			Text = if isEquipped then "Equipped" else "Equip",
 			Variant = if isEquipped then "secondary" else "primary",
-			Size = UDim2.fromScale(0.994839, 0.131148),
-			Position = UDim2.fromScale(0.5, 0.934426),
+			Size = UDim2.fromScale(0.85, 0.1),
+			Position = UDim2.fromScale(0.5, 0.92),
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			CornerRadius = UDim.new(0.1875, 0),
+			CornerRadius = UDim.new(0.3, 0),
 			OnClick = props.OnEquip or function() end,
 		}),
 
 		skinName = e("TextLabel", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
+			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
-			FontFace = Font.new(
-				"rbxassetid://11702779517",
-				Enum.FontWeight.Heavy,
-				Enum.FontStyle.Italic
-			),
-			Position = UDim2.fromScale(0.5, 0.0803279),
-			RichText = true,
-			Size = UDim2.fromScale(0.527265, 0.0721311),
+			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
+			Position = UDim2.fromScale(0.5, 0.05),
+			Size = UDim2.fromScale(0.9, 0.1),
 			Text = props.Name,
 			TextColor3 = Color3.new(1, 1, 1),
 			TextScaled = true,
@@ -91,56 +86,25 @@ return function(props: SkinCardProps)
 		}, {
 			uIStroke = e("UIStroke", {
 				Color = rarityConfig.stroke,
-				Thickness = 5,
-			}),
-
-			uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-				AspectRatio = 4.81818,
-			}),
-
-			uIPadding = e("UIPadding", {
-				PaddingBottom = UDim.new(0.0909091, 0),
-				PaddingTop = UDim.new(0.0909091, 0),
+				Thickness = 2,
 			}),
 		}),
 
-		category = e("TextLabel", {
+		-- Skin container - centered for LetterTile display
+		skinContainer = e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 1,
-			FontFace = Font.new(
-				"rbxassetid://11702779517",
-				Enum.FontWeight.ExtraBold,
-				Enum.FontStyle.Normal
-			),
-			Position = UDim2.fromScale(0.50125, 0.820492),
-			RichText = true,
-			Size = UDim2.fromScale(0.146739, 0.047541),
-			Text = props.Rarity,
-			TextColor3 = Color3.new(1, 1, 1),
-			TextScaled = true,
-			ZIndex = 3,
-		}, {
-			uIStroke = e("UIStroke", {
-				Color = rarityConfig.stroke,
-				Thickness = 5,
-			}),
-
-			uIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-				AspectRatio = 2.03448,
-			}),
-
-			uIPadding = e("UIPadding", {
-				PaddingBottom = UDim.new(0.0862069, 0),
-				PaddingTop = UDim.new(0.0862069, 0),
-			}),
-		}),
-
-		skin = e("ViewportFrame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.49875, 0.581967),
-			Size = UDim2.fromScale(0.94261, 0.911475),
+			Position = UDim2.fromScale(0.5, 0.48),
+			Size = UDim2.fromScale(0.7, 0.5),
 			ZIndex = 0,
+		}, {
+			-- Centered wrapper for LetterTile
+			CenterWrapper = e("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundTransparency = 1,
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(1, 1),
+			}, props.children),
 		}),
 	})
 end

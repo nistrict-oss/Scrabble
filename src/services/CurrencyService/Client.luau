@@ -5,9 +5,9 @@ local Signal = require(ReplicatedStorage.Packages.Signal)
 
 local CurrencyServiceClient = {
 	Networker = nil,
-	Cash = 0,
-	
-	OnCashUpdated = Signal.new(),
+	Coins = 0,
+
+	OnCoinsUpdated = Signal.new(),
 }
 
 export type CurrencyServiceClient = typeof(CurrencyServiceClient) & {
@@ -16,24 +16,29 @@ export type CurrencyServiceClient = typeof(CurrencyServiceClient) & {
 
 function CurrencyServiceClient.init(self: CurrencyServiceClient)
 	self.Networker = Networker.client.new("CurrencyService", self)
-	
+
 	task.defer(function()
-		self.Networker:fire("GetCash")
+		self.Networker:fire("GetCoins")
 	end)
 end
 
-function CurrencyServiceClient.CashUpdated(self: CurrencyServiceClient, newCash: number, change: number, reason: string)
-	local oldCash = self.Cash
-	self.Cash = newCash
-	self.OnCashUpdated:Fire(newCash, change, reason, oldCash)
+function CurrencyServiceClient.CoinsUpdated(
+	self: CurrencyServiceClient,
+	newCoins: number,
+	change: number,
+	reason: string
+)
+	local oldCoins = self.Coins
+	self.Coins = newCoins
+	self.OnCoinsUpdated:Fire(newCoins, change, reason, oldCoins)
 end
 
-function CurrencyServiceClient.getCash(self: CurrencyServiceClient): number
-	return self.Cash
+function CurrencyServiceClient.getCoins(self: CurrencyServiceClient): number
+	return self.Coins
 end
 
 function CurrencyServiceClient.canAfford(self: CurrencyServiceClient, amount: number): boolean
-	return self.Cash >= amount
+	return self.Coins >= amount
 end
 
 return CurrencyServiceClient

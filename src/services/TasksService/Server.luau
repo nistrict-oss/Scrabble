@@ -35,25 +35,25 @@ type TasksServiceServer = typeof(TasksServiceServer)
 
 function TasksServiceServer.GetTasks(self: TasksServiceServer, player: Player)
 	self.DataService:waitForData(player)
-	
+
 	if not self.DataService:hasProfile(player) then
 		return { Daily = {}, Weekly = {} }
 	end
-	
+
 	local data = self.DataService:get(player)
 	local dailyTasks = data and data.DailyTasks or {}
 	local weeklyTasks = data and data.WeeklyTasks or {}
-	
+
 	if #dailyTasks == 0 then
 		dailyTasks = self:generateDailyTasks()
 		self.DataService:set(player, { "DailyTasks" }, dailyTasks)
 	end
-	
+
 	if #weeklyTasks == 0 then
 		weeklyTasks = self:generateWeeklyTasks()
 		self.DataService:set(player, { "WeeklyTasks" }, weeklyTasks)
 	end
-	
+
 	return { Daily = dailyTasks, Weekly = weeklyTasks }
 end
 
@@ -61,44 +61,44 @@ function TasksServiceServer.ClaimTask(self: TasksServiceServer, player: Player, 
 	if not self.DataService:hasProfile(player) then
 		return false
 	end
-	
+
 	local dataKey = TASK_TYPE_TO_KEY[taskType]
 	if not dataKey then
 		return false
 	end
-	
+
 	local data = self.DataService:get(player)
 	local tasks = data[dataKey]
-	
+
 	if not tasks then
 		return false
 	end
-	
+
 	for i, task in ipairs(tasks) do
 		if task.id == taskId and task.progress >= task.goal and not task.claimed then
 			task.claimed = true
 			self.DataService:set(player, { dataKey, i }, task)
-			
+
 			-- Apply Supporter 2x cash multiplier
-			local multiplier = if self.PurchaseService then self.PurchaseService:getCashMultiplier(player) else 1
+			local multiplier = if self.PurchaseService then self.PurchaseService:getCoinsMultiplier(player) else 1
 			local actualReward = task.reward * multiplier
-			
-			self.CurrencyService:addCash(player, actualReward)
-			
+
+			self.CurrencyService:addCoins(player, actualReward)
+
 			self.OnTaskClaimed:Fire(player, taskId)
 			self.Networker:fire(player, "TaskClaimed", taskId, actualReward)
-			
+
 			return true
 		end
 	end
-	
+
 	return false
 end
 
 function TasksServiceServer:generateDailyTasks()
 	local tasks = {}
 	local dailyTaskIds = { "play_games", "win_game", "answer_questions", "eliminate_players" }
-	
+
 	for _, taskId in ipairs(dailyTaskIds) do
 		local def = TASK_DEFINITIONS[taskId]
 		if def then
@@ -113,14 +113,14 @@ function TasksServiceServer:generateDailyTasks()
 			})
 		end
 	end
-	
+
 	return tasks
 end
 
 function TasksServiceServer:generateWeeklyTasks()
 	local tasks = {}
 	local weeklyTaskIds = { "weekly_wins", "weekly_rounds", "weekly_correct" }
-	
+
 	for _, taskId in ipairs(weeklyTaskIds) do
 		local def = TASK_DEFINITIONS[taskId]
 		if def then
@@ -135,19 +135,19 @@ function TasksServiceServer:generateWeeklyTasks()
 			})
 		end
 	end
-	
+
 	return tasks
 end
 
 function TasksServiceServer:incrementTask(player: Player, taskId: string, amount: number?)
 	amount = amount or 1
-	
+
 	if not self.DataService:hasProfile(player) then
 		return
 	end
-	
+
 	local data = self.DataService:get(player)
-	
+
 	for _taskType, dataKey in pairs(TASK_TYPE_TO_KEY) do
 		local tasks = data[dataKey]
 		if tasks then
@@ -156,13 +156,13 @@ function TasksServiceServer:incrementTask(player: Player, taskId: string, amount
 					local newProgress = math.min(task.progress + amount, task.goal)
 					task.progress = newProgress
 					self.DataService:set(player, { dataKey, i }, task)
-					
+
 					self.Networker:fire(player, "TaskUpdated", taskId, newProgress)
-					
+
 					if newProgress >= task.goal then
 						self.OnTaskCompleted:Fire(player, taskId)
 					end
-					
+
 					return
 				end
 			end
@@ -174,7 +174,7 @@ function TasksServiceServer:resetDailyTasks(player: Player)
 	if not self.DataService:hasProfile(player) then
 		return
 	end
-	
+
 	local newTasks = self:generateDailyTasks()
 	self.DataService:set(player, { "DailyTasks" }, newTasks)
 	self.Networker:fire(player, "TasksReset", "Daily", newTasks)
@@ -184,7 +184,7 @@ function TasksServiceServer:resetWeeklyTasks(player: Player)
 	if not self.DataService:hasProfile(player) then
 		return
 	end
-	
+
 	local newTasks = self:generateWeeklyTasks()
 	self.DataService:set(player, { "WeeklyTasks" }, newTasks)
 	self.Networker:fire(player, "TasksReset", "Weekly", newTasks)
@@ -195,13 +195,13 @@ function TasksServiceServer.init(self: TasksServiceServer)
 		self.GetTasks,
 		self.ClaimTask,
 	})
-	
+
 	self.DataService = DataService
 	task.defer(function()
 		self.CurrencyService = require(ServerScriptService.Services.CurrencyService.CurrencyServiceServer)
 		self.PurchaseService = require(ServerScriptService.Services.PurchaseService.PurchaseServiceServer)
 	end)
-	
+
 	self.OnTaskCompleted = Signal.new()
 	self.OnTaskClaimed = Signal.new()
 end

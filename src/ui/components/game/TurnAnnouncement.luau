@@ -3,53 +3,57 @@ local TweenService = game:GetService("TweenService")
 local React = require(ReplicatedStorage.Packages.React)
 local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
+local TransitionFrameModule = require(ReplicatedStorage.UI.components.frames.TransitionFrame)
 
 local e = React.createElement
 
 export type TurnAnnouncementProps = {
 	PlayerName: string,
 	IsLocal: boolean,
-	IsSolo: boolean?,
-}
-
-local ENCOURAGEMENT_PHRASES = {
-	"GREAT WORD!",
-	"NICE MOVE!",
-	"GENIUS!",
-	"UNSTOPPABLE!",
-	"ON FIRE!",
-	"EXCELLENT!",
-	"FANTASTIC!",
-	"BRILLIANT!",
-	"WOW!",
-	"KEEP GOING!",
 }
 
 return function(props: TurnAnnouncementProps)
 	local containerRef = React.useRef(nil :: Frame?)
-	
+	local isMounted = React.useRef(true)
+	local transition = React.useContext(TransitionFrameModule.Context)
+
+	React.useEffect(function()
+		return function()
+			isMounted.current = false
+		end
+	end, {})
+
 	React.useEffect(function()
 		local container = containerRef.current
-		if not container then return end
-		
+		if not container then
+			return
+		end
+
 		-- Start position: Off-screen Right
 		container.Position = UDim2.fromScale(1.5, 0.4)
 		container.Visible = true
-		
+
 		-- 1. Swoop In to Center
-		local swoopIn = TweenService:Create(container, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			Position = UDim2.fromScale(0.5, 0.4)
-		})
-		
+		local swoopIn =
+			TweenService:Create(container, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Position = UDim2.fromScale(0.5, 0.4),
+			})
+
 		-- 2. Swoop Out to Left after a delay
-		local swoopOut = TweenService:Create(container, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-			Position = UDim2.fromScale(-0.5, 0.4)
-		})
-		
-		SoundUtils.playWoosh()
+		local swoopOut =
+			TweenService:Create(container, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+				Position = UDim2.fromScale(-0.5, 0.4),
+			})
+
+		if not transition.isExiting then
+			SoundUtils.playWoosh()
+		end
 		swoopIn:Play()
-		
+
 		task.delay(1.5, function()
+			if not isMounted.current or transition.isExiting then
+				return
+			end
 			if container.Parent then
 				SoundUtils.playWoosh()
 				swoopOut:Play()
@@ -59,12 +63,8 @@ return function(props: TurnAnnouncementProps)
 
 	-- Choose phrase once per mount/update
 	local displayText = React.useMemo(function()
-		if props.IsSolo then
-			return ENCOURAGEMENT_PHRASES[math.random(#ENCOURAGEMENT_PHRASES)]
-		else
-			return (if props.IsLocal then "YOUR" else props.PlayerName:upper() .. "'S") .. " TURN"
-		end
-	end, { props.PlayerName, props.IsSolo })
+		return (if props.IsLocal then "YOUR" else props.PlayerName:upper() .. "'S") .. " TURN"
+	end, { props.PlayerName })
 
 	return e("Frame", {
 		ref = containerRef,
@@ -81,11 +81,7 @@ return function(props: TurnAnnouncementProps)
 			Text = displayText,
 			TextColor3 = if props.IsLocal then Color3.fromRGB(249, 0, 149) else Color3.new(1, 1, 1),
 			TextScaled = true,
-			FontFace = Font.new(
-				"rbxassetid://11702779517",
-				Enum.FontWeight.Heavy,
-				Enum.FontStyle.Italic
-			),
+			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
 		}, {
 			UIStroke = e("UIStroke", {
 				Color = Color3.new(0, 0, 0),

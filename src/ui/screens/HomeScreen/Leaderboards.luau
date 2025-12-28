@@ -3,6 +3,7 @@ local React = require(ReplicatedStorage.Packages.React)
 local StyledPanel = require(ReplicatedStorage.UI.components.frames.StyledPanel)
 local LeaderboardEntry = require(ReplicatedStorage.UI.components.cards.LeaderboardEntry)
 local TabButton = require(ReplicatedStorage.UI.components.buttons.TabButton)
+local useLeaderboards = require(ReplicatedStorage.UI.hooks.useLeaderboards)
 
 local e = React.createElement
 
@@ -12,23 +13,33 @@ local function createTabButtons(tab, setTab)
 		winsButton = e(TabButton, {
 			Text = "Wins",
 			IsActive = tab == "Wins",
-			Size = UDim2.fromScale(0.478125, 0.0993377),
-			Position = UDim2.fromScale(0.50625, 0.0331126),
-			CornerRadius = UDim.new(0.133333, 0),
-			ZIndex = 2,
+			Size = UDim2.fromScale(0.31, 0.099),
+			Position = UDim2.fromScale(0.015, 0.033),
+			CornerRadius = UDim.new(0.133, 0),
 			OnClick = function()
 				setTab("Wins")
 			end,
 		}),
 
-		wordsFoundButton = e(TabButton, {
-			Text = "Words Found",
-			IsActive = tab == "WordsFound",
-			Size = UDim2.fromScale(0.478125, 0.0993377),
-			Position = UDim2.fromScale(0.015625, 0.0331126),
-			CornerRadius = UDim.new(0.133333, 0),
+		wordsButton = e(TabButton, {
+			Text = "Words",
+			IsActive = tab == "Words",
+			Size = UDim2.fromScale(0.31, 0.099),
+			Position = UDim2.fromScale(0.345, 0.033),
+			CornerRadius = UDim.new(0.133, 0),
 			OnClick = function()
-				setTab("WordsFound")
+				setTab("Words")
+			end,
+		}),
+
+		pointsButton = e(TabButton, {
+			Text = "Points",
+			IsActive = tab == "Points",
+			Size = UDim2.fromScale(0.31, 0.099),
+			Position = UDim2.fromScale(0.675, 0.033),
+			CornerRadius = UDim.new(0.133, 0),
+			OnClick = function()
+				setTab("Points")
 			end,
 		}),
 	}
@@ -64,29 +75,36 @@ end
 
 return function(_props)
 	local tab, setTab = React.useState("Wins")
+	local leaderboards = useLeaderboards()
 
 	local tabButtons = createTabButtons(tab, setTab)
 
-	local winsEntries = {
-		user1 = e(LeaderboardEntry, { Username = "Username", StatName = "Wins", Stat = 999, LayoutOrder = 1 }),
-		user2 = e(LeaderboardEntry, { Username = "Username", StatName = "Wins", Stat = 850, LayoutOrder = 2 }),
-		user3 = e(LeaderboardEntry, { Username = "Username", StatName = "Wins", Stat = 700, LayoutOrder = 3 }),
-	}
-
-	local wordsFoundEntries = {
-		user1 = e(LeaderboardEntry, { Username = "Username", StatName = "Words", Stat = 120, LayoutOrder = 1 }),
-		user2 = e(LeaderboardEntry, { Username = "Username", StatName = "Words", Stat = 110, LayoutOrder = 2 }),
-		user3 = e(LeaderboardEntry, { Username = "Username", StatName = "Words", Stat = 100, LayoutOrder = 3 }),
-	}
+	local function renderEntries(data, statName)
+		local elements = {}
+		for i, entry in ipairs(data) do
+			elements["entry_" .. i] = e(LeaderboardEntry, {
+				Rank = i,
+				Username = entry.DisplayName or "Player",
+				UserId = entry.UserId,
+				StatName = statName,
+				Stat = entry.Value or 0,
+				LayoutOrder = i,
+			})
+		end
+		return elements
+	end
 
 	return e(StyledPanel, {
 		AspectRatio = 2.01297,
 		CornerRadius = UDim.new(0.03003, 0),
 		Children = {
 			winsButton = tabButtons.winsButton,
-			wordsFoundButton = tabButtons.wordsFoundButton,
-			winsUsers = createScrollingContent(tab == "Wins", winsEntries),
-			wordsFoundUsers = createScrollingContent(tab == "WordsFound", wordsFoundEntries),
+			wordsButton = tabButtons.wordsButton,
+			pointsButton = tabButtons.pointsButton,
+
+			winsUsers = createScrollingContent(tab == "Wins", renderEntries(leaderboards.Wins, "Wins")),
+			wordsUsers = createScrollingContent(tab == "Words", renderEntries(leaderboards.Words, "Words")),
+			pointsUsers = createScrollingContent(tab == "Points", renderEntries(leaderboards.Points, "Points")),
 		},
 	})
 end

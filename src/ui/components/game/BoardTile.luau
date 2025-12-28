@@ -10,8 +10,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ScrabbleConfig = require(ReplicatedStorage.Shared.Modules.Game.ScrabbleConfig)
 local React = require(ReplicatedStorage.Packages.React)
 local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
+local useCosmetics = require(ReplicatedStorage.UI.hooks.useCosmetics)
+local ColorUtils = require(ReplicatedStorage.Shared.Modules.Core.ColorUtils)
+local SettingsServiceClient = require(ReplicatedStorage.Shared.Services.SettingsService.SettingsServiceClient)
 
 local e = React.createElement
+
+-- Colors module for converting color IDs to Color3 values
+local Colors = require(ReplicatedStorage.Shared.Modules.Game.Colors)
 
 -- Special tile types and their colors
 local SPECIAL_TILES = {
@@ -56,10 +62,13 @@ export type BoardTileProps = {
 	Row: number,
 	Col: number,
 	Letter: string?,
+	TileColors: { Tile: string, Text: string, Stroke: string }?, -- Owner's color IDs (global visibility)
+	IsBlank: boolean?, -- Is this a blank tile (worth 0 points)?
 	IsSelected: boolean?,
 	IsPreview: boolean?, -- For showing where tile will be placed
 	IsValid: boolean?, -- Whether the current word placement is valid
 	IsDragHover: boolean?, -- A tile is being dragged over this cell
+	IsRecent: boolean?, -- Was this tile placed in the most recent turn?
 	OnClick: ((row: number, col: number) -> ())?,
 	OnDrop: ((row: number, col: number) -> ())?,
 	OnDragEnter: ((row: number, col: number) -> ())?,
@@ -72,31 +81,55 @@ return function(props: BoardTileProps)
 	local row = props.Row
 	local col = props.Col
 	local letter = props.Letter
+	local tileColors = props.TileColors -- Owner's color IDs (may be nil)
+	local isBlank = props.IsBlank -- Blank tiles are worth 0 points
 	local isSelected = props.IsSelected
 	local isPreview = props.IsPreview
 	local isValid = props.IsValid
 	local isDragHover = props.IsDragHover
+	local isRecent = props.IsRecent
+
+	-- Get local player's cosmetics as fallback
+	local cosmetics = useCosmetics()
 
 	local posKey = row .. "," .. col
 	local specialType = ScrabbleConfig.SPECIAL_POSITIONS[posKey]
 	local special = specialType and SPECIAL_TILES[specialType]
 
-	-- Determine background color
-	local bgColor = Color3.fromRGB(45, 65, 110) -- Default bright blue
+	-- Determine colors
+	local bgColor = Color3.fromRGB(45, 65, 110) -- Default board cell color
 	local textColor = Color3.fromRGB(150, 150, 150)
+	local strokeColor = if isSelected then Color3.fromRGB(249, 0, 149) else Color3.fromRGB(30, 35, 60)
 	local displayText = ""
 
 	if letter then
-		-- Has a letter placed
-		bgColor = Color3.fromRGB(240, 220, 180) -- Tile color
-		textColor = Color3.fromRGB(30, 30, 30)
+		-- Use tile owner's colors if provided, otherwise fall back to local cosmetics
+		if tileColors then
+			-- Convert color IDs to Color3 values
+			bgColor = Colors.getColor(tileColors.Tile).Value
+			textColor = Colors.getColor(tileColors.Text).Value
+			strokeColor = Colors.getColor(tileColors.Stroke).Value
+		else
+			-- Fallback to local player's cosmetics (shouldn't happen normally)
+			bgColor = cosmetics.EquippedColors.Tile
+			textColor = cosmetics.EquippedColors.Text
+			strokeColor = cosmetics.EquippedColors.Stroke
+		end
 		displayText = letter
+
+		-- If it's selected (high priority highlight)
+		if isSelected then
+			bgColor = Color3.fromRGB(255, 180, 200)
+			strokeColor = Color3.fromRGB(249, 0, 149)
+			textColor = Color3.fromRGB(50, 45, 35)
+		end
 	elseif special then
 		bgColor = special.color
 		textColor = special.textColor
 		displayText = special.label
 	end
 
+	local outlineColor = ColorUtils.getContrastColor(textColor)
 	-- Preview tiles: green for valid, red for invalid
 	if isPreview then
 		if isValid then
@@ -220,13 +253,43 @@ return function(props: BoardTileProps)
 		}),
 
 		UICorner = e("UICorner", {
-			CornerRadius = UDim.new(0.15, 0),
+			CornerRadius = UDim.new(0.12, 0), -- Match LetterTile corner
 		}),
 
+		-- Tile border stroke (always present for letter tiles on board)
 		UIStroke = e("UIStroke", {
-			Color = if isSelected then Color3.fromRGB(249, 0, 149) else Color3.fromRGB(30, 35, 60),
-			Thickness = if isSelected then 3 else 1,
+			Color = if letter then strokeColor else strokeColor,
+			Thickness = if isSelected then 3 elseif letter then 2 else 1,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border, -- Draw stroke on border, not clipped
 		}),
+
+		UIGradient = letter and e("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+				ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(220, 200, 160)),
+			}),
+			Rotation = 180,
+		}) or nil,
+
+		-- White/Black overlay for recent tiles to make them pop (Adaptive based on brightness)
+		RecentOverlay = isRecent
+				and e("Frame", {
+					Size = UDim2.fromScale(1, 1),
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.5),
+					-- If background is light, show dark overlay. If background is dark, show light overlay.
+					BackgroundColor3 = if ColorUtils.getBrightness(bgColor) > 0.5
+						then Color3.new(0, 0, 0)
+						else Color3.new(1, 1, 1),
+					BackgroundTransparency = if ColorUtils.getBrightness(bgColor) > 0.5 then 0.65 else 0.7,
+					ZIndex = 3, -- On top (above Label which is 2)
+				}, {
+					UICorner = e("UICorner", {
+						CornerRadius = UDim.new(0.12, 0),
+					}),
+				})
+			or nil,
 
 		Label = e("TextLabel", {
 			Size = UDim2.fromScale(1, 1),
@@ -235,25 +298,42 @@ return function(props: BoardTileProps)
 			TextColor3 = textColor,
 			TextScaled = true,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+			ZIndex = 2,
 		}, {
 			UIPadding = e("UIPadding", {
-				PaddingBottom = UDim.new(0.1, 0),
+				PaddingBottom = UDim.new(0.2, 0), -- Match LetterTile padding
 				PaddingTop = UDim.new(0.1, 0),
 				PaddingLeft = UDim.new(0.1, 0),
 				PaddingRight = UDim.new(0.1, 0),
 			}),
+
+			UIStroke = e("UIStroke", {
+				Color = outlineColor,
+				Thickness = 1,
+				Transparency = 0.5,
+			}),
 		}),
 
 		-- Letter value indicator (bottom right)
-		LetterValue = letter and e("TextLabel", {
-			Size = UDim2.fromScale(0.35, 0.35),
-			Position = UDim2.fromScale(0.95, 0.95),
-			AnchorPoint = Vector2.new(1, 1),
-			BackgroundTransparency = 1,
-			Text = tostring(LETTER_VALUES[letter] or 0),
-			TextColor3 = Color3.fromRGB(80, 80, 80),
-			TextScaled = true,
-			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
-		}) or nil,
+		LetterValue = (letter and SettingsServiceClient:getSetting("ShowTilePoints") ~= false)
+				and e("TextLabel", {
+					Size = UDim2.fromScale(0.3, 0.3), -- Match LetterTile value size
+					Position = UDim2.fromScale(0.92, 0.92), -- Match LetterTile position
+					AnchorPoint = Vector2.new(1, 1),
+					BackgroundTransparency = 1,
+					Text = tostring(if isBlank == true then 0 else (LETTER_VALUES[letter] or 0)),
+					TextColor3 = textColor,
+					TextTransparency = 0.3, -- Match LetterTile transparency
+					TextScaled = true,
+					FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
+					ZIndex = 3,
+				}, {
+					UIStroke = e("UIStroke", {
+						Color = outlineColor,
+						Thickness = 1,
+						Transparency = 0.7,
+					}),
+				})
+			or nil,
 	})
 end

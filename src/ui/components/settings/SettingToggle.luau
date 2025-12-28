@@ -9,10 +9,15 @@ export type SettingToggleProps = {
 	Value: boolean,
 	LayoutOrder: number?,
 	OnChange: ((newValue: boolean) -> ())?,
+	IsDisabled: boolean?,
 }
 
 return function(props: SettingToggleProps)
 	local isOn = props.Value
+
+	-- Visual feedback for disabled state could be handled by TextButton,
+	-- but we might want to dim the whole row or just the buttons.
+	-- TextButton generally handles IsDisabled by graying out.
 
 	return e("Frame", {
 		BackgroundTransparency = 1,
@@ -25,20 +30,17 @@ return function(props: SettingToggleProps)
 			Image = "rbxassetid://137904107688579",
 			Size = UDim2.fromScale(1, 1),
 			ZIndex = 0,
+			ImageColor3 = if props.IsDisabled then Color3.fromRGB(150, 150, 150) else Color3.new(1, 1, 1),
 		}),
 
 		settingName = e("TextLabel", {
 			BackgroundTransparency = 1,
-			FontFace = Font.new(
-				"rbxassetid://11702779517",
-				Enum.FontWeight.Heavy,
-				Enum.FontStyle.Italic
-			),
+			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
 			Position = UDim2.fromScale(0.0180645, 0.28),
 			RichText = true,
 			Size = UDim2.fromScale(0.173548, 0.44),
 			Text = props.Name,
-			TextColor3 = Color3.new(1, 1, 1),
+			TextColor3 = if props.IsDisabled then Color3.fromRGB(150, 150, 150) else Color3.new(1, 1, 1),
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 		}, {
@@ -60,8 +62,9 @@ return function(props: SettingToggleProps)
 			Position = UDim2.fromScale(0.825806, 0.12),
 			CornerRadius = UDim.new(0.133333, 0),
 			ZIndex = 2,
+			Disabled = props.IsDisabled,
 			OnClick = function()
-				if props.OnChange then
+				if props.OnChange and not props.IsDisabled then
 					props.OnChange(true)
 				end
 			end,
@@ -75,8 +78,9 @@ return function(props: SettingToggleProps)
 			Position = UDim2.fromScale(0.658065, 0.12),
 			CornerRadius = UDim.new(0.133333, 0),
 			ZIndex = 3,
+			Disabled = props.IsDisabled,
 			OnClick = function()
-				if props.OnChange then
+				if props.OnChange and not props.IsDisabled then
 					props.OnChange(false)
 				end
 			end,

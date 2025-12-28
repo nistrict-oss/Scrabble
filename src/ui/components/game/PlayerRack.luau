@@ -1,89 +1,114 @@
 --[[
 	PlayerRack.luau
 	
-	Shows the player's 7 letter tiles. Players can click tiles to select them
-	for placement on the board. All tile movements are smoothly animated.
+	UI component for the player's tile rack.
+	Handles displaying tiles, selection, and drag logic.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local React = require(ReplicatedStorage.Packages.React)
 local LetterTile = require(ReplicatedStorage.UI.components.game.LetterTile)
+local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
 
 local e = React.createElement
 
-local ANIMATION_DURATION = 0.25
 local MAX_TILES = 7
+local ANIMATION_DURATION = 0.3
 
 export type PlayerRackProps = {
-	Letters: { string }, -- Array of up to 7 letters
-	SelectedIndex: number?, -- Currently selected tile index
-	DraggingIndex: number?, -- Index of tile being dragged
-	IsDragging: boolean?, -- Is any tile currently being dragged
-	IsDisabled: boolean?, -- Disable interactions (not your turn)
-	IsExchangeMode: boolean?, -- In exchange tile selection mode
-	ExchangeSelection: { [number]: boolean }?, -- Which tiles are selected for exchange
-	OnTileClick: ((index: number, letter: string) -> ())?,
-	OnDragStart: ((index: number, letter: string) -> ())?,
-	OnDropToRack: (() -> ())?, -- Called when a tile is dropped back to rack
-	OnExchangeToggle: ((rackIndex: number) -> ())?, -- Toggle tile for exchange
-	PlacedTiles: { { row: number, col: number, letter: string, rackIndex: number } }?,
+	Letters: { { id: number, letter: string } }, -- Array of stable tile objects
+	SelectedIndex: number?,
+	DraggingIndex: number?,
+	IsDragging: boolean?,
+	IsDisabled: boolean?,
+	IsExchangeMode: boolean?,
+	ExchangeSelection: { [number]: boolean }?,
+	PlacedTiles: { { rackIndex: number, letter: string, row: number, col: number } }?,
 	IsWordValid: boolean?,
+	HiddenIndices: { [number]: boolean }?,
+	OnTileClick: ((number, string) -> ())?,
+	OnDragStart: ((number, string) -> ())?,
+	OnDropToRack: (() -> ())?,
+	OnExchangeToggle: ((number) -> ())?,
+	OnReportPosition: ((index: number, pos: Vector2) -> ())?,
+	RackVersions: { number }?,
 }
 
--- Animated tile wrapper component
 local function AnimatedTile(tileProps: {
 	Letter: string,
 	Index: number,
 	TotalTiles: number,
 	TargetX: number,
+	TargetScale: number,
 	IsSelected: boolean?,
 	IsDragging: boolean?,
 	IsDisabled: boolean?,
 	IsNew: boolean?,
 	OverrideColor: Color3?,
+	EntryDelay: number?,
 	OnClick: ((number, string) -> ())?,
 	OnDragStart: ((number, string) -> ())?,
+	OnReportPosition: ((index: number, pos: Vector2) -> ())?,
 })
 	local tileWidth = 1 / MAX_TILES
 	local targetX = tileProps.TargetX
-	
-	-- Animated position state - start at target unless new
-	local currentX, setCurrentX = React.useState(if tileProps.IsNew then 1.2 else targetX)
-	local currentScale, setCurrentScale = React.useState(if tileProps.IsNew then 0.5 else 1)
+	local targetScale = tileProps.TargetScale
+
+	-- Initialize at target position.
+	-- If it's a NEW tile (just entered rack), start it off-screen to the right.
+	-- Otherwise, start it where it should be, and let useEffect animate any changes.
+	local initialX = if tileProps.IsNew and targetScale > 0.5 then 1.2 else targetX
+	local initialScale = if tileProps.IsNew and targetScale > 0.5 then 0.5 else targetScale
+
+	local currentX, setCurrentX = React.useState(initialX)
+	local currentScale, setCurrentScale = React.useState(initialScale)
 	local animConnection = React.useRef(nil)
-	
+
 	-- Animate to target position whenever it changes
 	React.useEffect(function()
-		-- Always cancel existing animation when targetX changes
+		-- Always cancel existing animation
 		if animConnection.current then
 			animConnection.current:Disconnect()
 			animConnection.current = nil
 		end
-		
-		local needsAnimation = math.abs(currentX - targetX) > 0.005 or math.abs(currentScale - 1) > 0.01
-		
+
+		local needsAnimation = math.abs(currentX - targetX) > 0.005 or math.abs(currentScale - targetScale) > 0.005
+
 		if needsAnimation then
+			local delayTime = tileProps.EntryDelay or 0
 			local startXVal = currentX
 			local startScaleVal = currentScale
-			local startTime = tick()
-			
+			local startTime = tick() + delayTime
+			local soundPlayed = false -- Prevent multiple woosh sounds
+
 			animConnection.current = RunService.Heartbeat:Connect(function()
-				local elapsed = tick() - startTime
+				local now = tick()
+				if now < startTime then
+					return
+				end
+
+				-- Play woosh sound only once at animation start
+				if not soundPlayed and tileProps.IsNew then
+					soundPlayed = true
+					SoundUtils.playWoosh()
+				end
+
+				local elapsed = now - startTime
 				local alpha = math.min(elapsed / ANIMATION_DURATION, 1)
-				
+
 				-- Smooth ease-out cubic
 				local easedAlpha = 1 - math.pow(1 - alpha, 3)
-				
+
 				local newX = startXVal + (targetX - startXVal) * easedAlpha
-				local newScale = startScaleVal + (1 - startScaleVal) * easedAlpha
-				
+				local newScale = startScaleVal + (targetScale - startScaleVal) * easedAlpha -- Corrected: targetScale - startScaleVal
+
 				setCurrentX(newX)
-				setCurrentScale(newScale)
-				
+				setCurrentScale(newScale) -- Moved this line back
+
 				if alpha >= 1 then
 					setCurrentX(targetX)
-					setCurrentScale(1)
+					setCurrentScale(targetScale)
 					if animConnection.current then
 						animConnection.current:Disconnect()
 						animConnection.current = nil
@@ -93,17 +118,17 @@ local function AnimatedTile(tileProps: {
 		else
 			-- Snap to target if very close
 			setCurrentX(targetX)
-			setCurrentScale(1)
+			setCurrentScale(targetScale)
 		end
-		
+
 		return function()
 			if animConnection.current then
 				animConnection.current:Disconnect()
 				animConnection.current = nil
 			end
 		end
-	end, { targetX })
-	
+	end, { targetX, targetScale, tileProps.EntryDelay })
+
 	return e("Frame", {
 		Size = UDim2.fromScale(tileWidth * currentScale, currentScale),
 		Position = UDim2.fromScale(currentX, 0.5),
@@ -111,6 +136,13 @@ local function AnimatedTile(tileProps: {
 		BackgroundTransparency = 1,
 		ClipsDescendants = false,
 		ZIndex = if tileProps.IsDragging then 10 else 1,
+		Visible = currentScale > 0.1,
+		[React.Change.AbsolutePosition] = function(rbx)
+			if tileProps.OnReportPosition and currentScale > 0.5 then
+				local pos = rbx.AbsolutePosition + rbx.AbsoluteSize / 2
+				tileProps.OnReportPosition(tileProps.Index, pos)
+			end
+		end,
 	}, {
 		Content = e(LetterTile, {
 			Letter = tileProps.Letter,
@@ -119,11 +151,13 @@ local function AnimatedTile(tileProps: {
 			IsDragging = tileProps.IsDragging,
 			IsDisabled = tileProps.IsDisabled,
 			IsNew = false,
+			NoPop = true,
+			Active = targetScale > 0.5, -- Only responsive when visible
 			OverrideColor = tileProps.OverrideColor,
 			OnClick = tileProps.OnClick,
 			OnDragStart = tileProps.OnDragStart,
 		}),
-		
+
 		UIPadding = e("UIPadding", {
 			PaddingBottom = UDim.new(0.05, 0),
 			PaddingTop = UDim.new(0.05, 0),
@@ -137,150 +171,145 @@ return function(props: PlayerRackProps)
 	local letters = props.Letters or {}
 	local selectedIndex = props.SelectedIndex
 	local draggingIndex = props.DraggingIndex
-	local isDragging = props.IsDragging
 	local isDisabled = props.IsDisabled
 	local isExchangeMode = props.IsExchangeMode
 	local exchangeSelection = props.ExchangeSelection or {}
 	local placedTiles = props.PlacedTiles or {}
 	local isWordValid = props.IsWordValid
-	local isHoveringRack, setIsHoveringRack = React.useState(false)
-	
-	-- Track previous rack size to detect new tiles
-	local prevRackSize = React.useRef(#letters)
-	local newTileIndices, setNewTileIndices = React.useState({} :: {[number]: boolean})
-	
-	-- Detect new tiles
-	React.useEffect(function()
-		local currentSize = #letters
-		local prevSize = prevRackSize.current
-		
-		if currentSize > prevSize and prevSize > 0 then
-			local newFlags = {}
-			for i = prevSize + 1, currentSize do
-				newFlags[i] = true
+
+	-- Only swipe animation when a slot is refilled with a new letter (from bag/swap)
+	local lastLetterMap = React.useRef({} :: { [number]: string })
+	local newTileIndices = React.useMemo(function()
+		local indices = {}
+		for i, t in ipairs(letters) do
+			if not lastLetterMap.current[t.id] or (lastLetterMap.current[t.id] ~= t.letter) then
+				indices[i] = true
 			end
-			setNewTileIndices(newFlags)
-			
-			task.delay(0.5, function()
-				setNewTileIndices({})
-			end)
 		end
-		
-		prevRackSize.current = currentSize
+		return indices
 	end, { letters })
-	
-	-- Calculate target positions for centered layout
+
+	-- Update last letters in an effect to keep render pure
+	React.useEffect(function()
+		local newMap = {}
+		for _, t in ipairs(letters or {}) do
+			newMap[t.id] = t.letter
+		end
+		lastLetterMap.current = newMap
+	end, { letters })
+
+	local hiddenIndices = props.HiddenIndices or {}
+	local visibleCount = 0
+	for _, tile in ipairs(letters) do
+		if not hiddenIndices[tile.id] then
+			visibleCount += 1
+		end
+	end
+
 	local tileWidth = 1 / MAX_TILES
-	local totalWidth = #letters * tileWidth
-	local startX = (1 - totalWidth) / 2
-	
+	local startX = (1 - (visibleCount * tileWidth)) / 2
+
+	local visibleIndex = 0
 	local tiles = {}
-	for i, letter in ipairs(letters) do
-		local isSelectedForExchange = exchangeSelection[i] == true
+	for i, tileInfo in ipairs(letters) do
+		local id = tileInfo.id
+		local letter = tileInfo.letter
+		local isSelectedForExchange = exchangeSelection[id] == true
 		local isNewTile = newTileIndices[i] == true
-		local targetX = startX + (i - 1) * tileWidth + tileWidth / 2
-		
-		local function handleExchangeClick(index: number, _letter: string)
+		local isHidden = hiddenIndices[id] == true
+
+		if not isHidden then
+			visibleIndex += 1
+		end
+
+		-- Target position:
+		-- Visible tiles spread out.
+		-- Hidden tiles stack behind the previous visible tile to avoid jumping.
+		local targetX = startX + (visibleIndex - 0.5) * tileWidth
+		local targetScale = if isHidden then 0 else 1
+
+		local function handleExchangeClick(clickedId: number, _letter: string)
 			if props.OnExchangeToggle then
-				props.OnExchangeToggle(index)
+				props.OnExchangeToggle(clickedId)
 			end
 		end
-		
-		-- Check if this tile is currently on the board
+
+		-- Check if this tile is currently on the board (even if hidden in rack)
 		local overrideColor = nil
 		if isExchangeMode then
 			local isOnBoard = false
 			for _, p in ipairs(placedTiles) do
-				if p.rackIndex == i then
+				if p.rackIndex == id then
 					isOnBoard = true
 					break
 				end
 			end
-			
+
 			if isOnBoard then
 				overrideColor = if isWordValid then Color3.fromRGB(100, 200, 100) else Color3.fromRGB(220, 100, 100)
 			end
 		end
-		
-		-- Use index as key for stable component identity
-		tiles["Tile_" .. i] = e(AnimatedTile, {
-			Letter = letter,
-			Index = i,
-			TotalTiles = #letters,
-			TargetX = targetX,
-			IsSelected = if isExchangeMode then isSelectedForExchange else (selectedIndex == i),
-			IsDragging = draggingIndex == i,
-			IsDisabled = isDisabled,
-			IsNew = isNewTile,
-			OverrideColor = overrideColor,
-			OnClick = if isExchangeMode then handleExchangeClick else props.OnTileClick,
-			OnDragStart = if isExchangeMode then nil else props.OnDragStart,
-		})
+
+		table.insert(
+			tiles,
+			e(AnimatedTile, {
+				key = "Tile_" .. tostring(id) .. "_" .. (props.RackVersions and props.RackVersions[id] or 0),
+				Letter = letter,
+				Index = id,
+				TotalTiles = #letters,
+				TargetX = targetX,
+				TargetScale = targetScale,
+				IsSelected = if isExchangeMode then isSelectedForExchange else (selectedIndex == id),
+				IsDragging = draggingIndex == id,
+				IsDisabled = isDisabled,
+				IsNew = isNewTile,
+				EntryDelay = if isNewTile then (i - 1) * 0.1 else 0,
+				OverrideColor = overrideColor,
+				OnClick = if isExchangeMode then handleExchangeClick else props.OnTileClick,
+				OnDragStart = if isExchangeMode then nil else props.OnDragStart,
+				OnReportPosition = props.OnReportPosition,
+			})
+		)
 	end
-	
-	-- Show highlight when a tile can be dropped here
-	local rackBgColor = Color3.fromRGB(35, 55, 100)
-	local strokeColor = Color3.fromRGB(70, 100, 160)
-	if isDragging and isHoveringRack then
-		rackBgColor = Color3.fromRGB(60, 80, 140) -- Brighter blue highlight for drop zone
-		strokeColor = Color3.fromRGB(249, 0, 149) -- Pink stroke
-	end
-	
+
 	return e("TextButton", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = rackBgColor,
-		ClipsDescendants = false, -- Allow tiles to animate in from outside
+		BackgroundTransparency = 1,
 		Text = "",
-		AutoButtonColor = false,
-		[React.Event.MouseEnter] = function()
-			setIsHoveringRack(true)
-		end,
-		[React.Event.MouseLeave] = function()
-			setIsHoveringRack(false)
-		end,
+		[React.Event.Activated] = props.OnDropToRack,
 	}, {
-		UICorner = e("UICorner", {
-			CornerRadius = UDim.new(0.1, 0),
-		}),
-		
-		UIStroke = e("UIStroke", {
-			Color = strokeColor,
-			Thickness = 3,
-		}),
-		
-		-- Bright blue gradient
-		UIGradient = e("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 75, 130)),
-				ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 65, 115)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(30, 50, 95)),
+		Background = e("Frame", {
+			Size = UDim2.fromScale(1, 0.45),
+			Position = UDim2.fromScale(0.5, 0.5),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Color3.fromRGB(40, 30, 20),
+			ZIndex = 0,
+		}, {
+			UICorner = e("UICorner", {
+				CornerRadius = UDim.new(0.2, 0),
 			}),
-			Rotation = 90,
+			UIStroke = e("UIStroke", {
+				Color = Color3.fromRGB(60, 45, 30),
+				Thickness = 2,
+			}),
 		}),
-		
-		UIPadding = e("UIPadding", {
-			PaddingBottom = UDim.new(0.05, 0),
-			PaddingTop = UDim.new(0.05, 0),
-			PaddingLeft = UDim.new(0.02, 0),
-			PaddingRight = UDim.new(0.02, 0),
-		}),
-		
+
 		TileContainer = e("Frame", {
 			Size = UDim2.fromScale(1, 1),
 			BackgroundTransparency = 1,
 			ClipsDescendants = false,
 		}, tiles),
-		
-		-- Strategy indicator (Optional: Could add a subtle text saying "Planning Mode")
-		StrategyHint = isDisabled and e("TextLabel", {
-			Size = UDim2.fromScale(1, 0.05),
-			Position = UDim2.fromScale(0, -0.2),
-			BackgroundTransparency = 1,
-			Text = "Planning Mode - Strategy Only",
-			TextColor3 = Color3.fromRGB(150, 150, 180),
-			TextSize = 10,
-			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Italic),
-		}) or nil,
+
+		StrategyHint = if isDisabled
+			then e("TextLabel", {
+				Size = UDim2.fromScale(1, 0.05),
+				Position = UDim2.fromScale(0, -0.2),
+				BackgroundTransparency = 1,
+				Text = "Planning Mode - Strategy Only",
+				TextColor3 = Color3.fromRGB(150, 150, 180),
+				TextSize = 10,
+				FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+			})
+			else nil,
 	})
 end
-

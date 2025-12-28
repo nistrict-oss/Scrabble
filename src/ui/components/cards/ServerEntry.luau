@@ -26,7 +26,7 @@ return function(props: ServerEntryProps)
 
 	return e("Frame", {
 		BackgroundColor3 = Color3.new(1, 1, 1),
-		Size = UDim2.fromScale(1, 0.15),
+		Size = UDim2.new(1, 0, 0, 80),
 		LayoutOrder = props.LayoutOrder,
 		ZIndex = 0,
 	}, {
@@ -81,7 +81,7 @@ return function(props: ServerEntryProps)
 					Image = thumbnailUrl,
 					Size = UDim2.fromScale(1, 1),
 					ScaleType = Enum.ScaleType.Fit,
-					ImageColor3 = Color3.fromRGB(2, 181, 221),
+					ImageColor3 = Color3.fromRGB(255,255,255), 
 				}, {
 					uICorner = e("UICorner", {
 						CornerRadius = UDim.new(1, 0),
@@ -146,9 +146,10 @@ return function(props: ServerEntryProps)
 		}),
 
 		joinButton = e(TextButton, {
-			Text = if props.Phase ~= "lobby" then "Started" 
-				   elseif props.PlayerCount >= props.MaxPlayers then "Full"
-				   else "Join",
+			Text = if props.Phase ~= "lobby"
+				then "Started"
+				elseif props.PlayerCount >= props.MaxPlayers then "Full"
+				else "Join",
 			Variant = "primary",
 			BackgroundImage = "rbxassetid://71123294591402",
 			Size = UDim2.fromScale(0.10737, 0.822917),
@@ -159,35 +160,39 @@ return function(props: ServerEntryProps)
 			OnClick = props.OnJoin or function() end,
 		}),
 
-		spectate = if props.Phase ~= "lobby" then e(TextButton, {
-			BackgroundColor3 = Color3.new(1, 1, 1),
-			Position = UDim2.fromScale(0.76387, 0.0855833),
-			BackgroundImage = "rbxassetid://71123294591402",
-			Size = UDim2.fromScale(0.10737, 0.822917),
-			CornerRadius = UDim.new(0.08, 0),
-			ZIndex = 2,
-			Text = "Spectate",
-			Variant = "secondary",
-			OnClick = props.OnSpectate or function() end,
-		}, {
+		spectate = if props.Phase ~= "lobby"
+			then e(TextButton, {
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				Position = UDim2.fromScale(0.76387, 0.0855833),
+				BackgroundImage = "rbxassetid://71123294591402",
+				Size = UDim2.fromScale(0.10737, 0.822917),
+				CornerRadius = UDim.new(0.08, 0),
+				ZIndex = 2,
+				Text = "Spectate",
+				Variant = "secondary",
+				OnClick = props.OnSpectate or function() end,
+			}, {
 
-			uIStroke = e("UIStroke", {
-				Color = Color3.new(1, 1, 1),
-				Thickness = 2,
-			}),
+				uIStroke = e("UIStroke", {
+					Color = Color3.new(1, 1, 1),
+					Thickness = 2,
+				}),
 
-			eyeUnselected = e("ImageLabel", {
-				BackgroundTransparency = 1,
-				Image = "rbxassetid://84735663475952",
-				Position = UDim2.fromScale(0.264, 0.264),
-				Size = UDim2.fromScale(0.48, 0.48),
-			}),
-		}) else nil,
+				eyeUnselected = e("ImageLabel", {
+					BackgroundTransparency = 1,
+					Image = "rbxassetid://84735663475952",
+					Position = UDim2.fromScale(0.264, 0.264),
+					Size = UDim2.fromScale(0.48, 0.48),
+				}),
+			})
+			else nil,
 
 		playerCount = e("TextLabel", {
 			BackgroundTransparency = 1,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
-			Position = if props.Phase ~= "lobby" then UDim2.fromScale(0.66, 0.506917) else UDim2.fromScale(0.78, 0.506917),
+			Position = if props.Phase ~= "lobby"
+				then UDim2.fromScale(0.66, 0.506917)
+				else UDim2.fromScale(0.78, 0.506917),
 			RichText = true,
 			Size = UDim2.fromScale(0.0412903, 0.289667),
 			Text = props.PlayerCount .. "/" .. props.MaxPlayers,
@@ -209,7 +214,9 @@ return function(props: ServerEntryProps)
 		playersLabel = e("TextLabel", {
 			BackgroundTransparency = 1,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
-			Position = if props.Phase ~= "lobby" then UDim2.fromScale(0.66, 0.17775) else UDim2.fromScale(0.78, 0.17775),
+			Position = if props.Phase ~= "lobby"
+				then UDim2.fromScale(0.66, 0.17775)
+				else UDim2.fromScale(0.78, 0.17775),
 			RichText = true,
 			Size = UDim2.fromScale(0.0948387, 0.289667),
 			Text = "Players",

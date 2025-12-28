@@ -23,20 +23,20 @@ local PurchaseServiceServer = {
 	Networker = nil,
 	CurrencyService = nil,
 	LeaderboardService = nil, -- Lazy-loaded for donation handling
-	
+
 	GamepassCache = {}, -- { [Player] = { [gamepassName] = true } }
 	GamepassLoadedFlags = {}, -- { [Player] = true } - tracks if gamepasses finished loading
 	PriceLevelCache = {}, -- { [UserId] = priceLevel }
-	PricesCache = {     -- Fetched from MarketplaceService
+	PricesCache = { -- Fetched from MarketplaceService
 		Gamepasses = {}, -- { [gamepassName] = price }
-		Products = {},   -- { [productName] = price }
+		Products = {}, -- { [productName] = price }
 	},
 	PricesFetched = false,
-	
+
 	-- Pending gifts: tracks who should receive the item when purchase completes
 	-- { [buyerUserId] = { type = "gamepass"|"product", itemName = string, recipientUserId = number } }
 	PendingGifts = {},
-	
+
 	OnGamepassPurchased = Signal.new(),
 	OnProductPurchased = Signal.new(),
 }
@@ -50,7 +50,7 @@ function PurchaseServiceServer.init(self: PurchaseServiceServer)
 		self.CurrencyService = require(ServerScriptService.Services.CurrencyService.CurrencyServiceServer)
 		self.LeaderboardService = require(ServerScriptService.Services.LeaderboardService.LeaderboardServiceServer)
 	end)
-	
+
 	self.Networker = Networker.server.new("PurchaseService", self, {
 		self.PromptGamepass,
 		self.PromptProduct,
@@ -59,12 +59,12 @@ function PurchaseServiceServer.init(self: PurchaseServiceServer)
 		self.GetOwnedGamepasses,
 		self.GetPrices,
 	})
-	
+
 	-- Fetch prices from MarketplaceService
 	task.spawn(function()
 		self:fetchAllPrices()
 	end)
-	
+
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamepassId, wasPurchased)
 		if wasPurchased then
 			self:onGamepassPurchased(player, gamepassId)
@@ -75,17 +75,17 @@ function PurchaseServiceServer.init(self: PurchaseServiceServer)
 			end
 		end
 	end)
-	
+
 	MarketplaceService.ProcessReceipt = function(receiptInfo)
 		return self:processReceipt(receiptInfo)
 	end
-	
+
 	for _, player in Players:GetPlayers() do
 		task.spawn(function()
 			self:loadGamepasses(player)
 		end)
 	end
-	
+
 	Players.PlayerAdded:Connect(function(player)
 		self:loadGamepasses(player)
 		-- Cache player's price level for gifting/trading protection
@@ -93,14 +93,14 @@ function PurchaseServiceServer.init(self: PurchaseServiceServer)
 			self:getUserPriceLevel(player)
 		end)
 	end)
-	
+
 	Players.PlayerRemoving:Connect(function(player)
 		self.GamepassCache[player] = nil
 		self.GamepassLoadedFlags[player] = nil
 		self.PriceLevelCache[player.UserId] = nil
 		self.PendingGifts[player.UserId] = nil -- Clear any pending gifts
 	end)
-	
+
 	-- Preload price levels for existing players
 	task.spawn(function()
 		self:preloadPriceLevels()
@@ -110,14 +110,14 @@ end
 -- Fetch prices from MarketplaceService for all gamepasses and products
 function PurchaseServiceServer.fetchAllPrices(self: PurchaseServiceServer)
 	print("[PurchaseService] Fetching prices from MarketplaceService...")
-	
+
 	-- Fetch gamepass prices
 	for gamepassName, gamepass in Purchases.GAMEPASSES do
 		if gamepass.robloxId > 0 then
 			local success, info = pcall(function()
 				return MarketplaceService:GetProductInfo(gamepass.robloxId, Enum.InfoType.GamePass)
 			end)
-			
+
 			if success and info then
 				self.PricesCache.Gamepasses[gamepassName] = info.PriceInRobux or 0
 			else
@@ -128,14 +128,14 @@ function PurchaseServiceServer.fetchAllPrices(self: PurchaseServiceServer)
 			self.PricesCache.Gamepasses[gamepassName] = gamepass.price -- Use configured price if no ID
 		end
 	end
-	
+
 	-- Fetch product prices
 	for productName, product in Purchases.PRODUCTS do
 		if product.robloxId > 0 then
 			local success, info = pcall(function()
 				return MarketplaceService:GetProductInfo(product.robloxId, Enum.InfoType.Product)
 			end)
-			
+
 			if success and info then
 				self.PricesCache.Products[productName] = info.PriceInRobux or 0
 			else
@@ -146,7 +146,7 @@ function PurchaseServiceServer.fetchAllPrices(self: PurchaseServiceServer)
 			self.PricesCache.Products[productName] = product.price -- Use configured price if no ID
 		end
 	end
-	
+
 	self.PricesFetched = true
 	print("[PurchaseService] Prices fetched successfully!")
 end
@@ -159,7 +159,7 @@ end
 function PurchaseServiceServer.loadGamepasses(self: PurchaseServiceServer, player: Player)
 	self.GamepassCache[player] = {}
 	self.GamepassLoadedFlags[player] = false
-	
+
 	-- Check ownership for each gamepass via MarketplaceService
 	for gamepassName, gamepass in Purchases.GAMEPASSES do
 		local robloxId = gamepass.robloxId
@@ -169,7 +169,7 @@ function PurchaseServiceServer.loadGamepasses(self: PurchaseServiceServer, playe
 				local success, owns = pcall(function()
 					return MarketplaceService:UserOwnsGamePassAsync(player.UserId, robloxId)
 				end)
-				
+
 				if success then
 					if owns then
 						self.GamepassCache[player][gamepassName] = true
@@ -185,7 +185,7 @@ function PurchaseServiceServer.loadGamepasses(self: PurchaseServiceServer, playe
 			end
 		end
 	end
-	
+
 	-- Also load from saved data (for testing/admin purposes)
 	if DataService:hasProfile(player) then
 		local gamepasses = DataService:get(player, { "Gamepasses" }) or {}
@@ -193,10 +193,10 @@ function PurchaseServiceServer.loadGamepasses(self: PurchaseServiceServer, playe
 			self.GamepassCache[player][gamepassName] = true
 		end
 	end
-	
+
 	-- Mark as loaded
 	self.GamepassLoadedFlags[player] = true
-	
+
 	-- Send owned gamepass names to client
 	self:sendOwnedGamepasses(player)
 end
@@ -221,11 +221,11 @@ function PurchaseServiceServer.onGamepassPurchased(self: PurchaseServiceServer, 
 		warn("Unknown gamepass purchased with ID:", robloxId)
 		return
 	end
-	
+
 	-- Check if this was a gift purchase
 	local pendingGift = self.PendingGifts[player.UserId]
 	local targetPlayer = player
-	
+
 	if pendingGift and pendingGift.type == "gamepass" and pendingGift.itemName == gamepassName then
 		-- This was a gift - give to recipient instead
 		local recipient = Players:GetPlayerByUserId(pendingGift.recipientUserId)
@@ -239,28 +239,28 @@ function PurchaseServiceServer.onGamepassPurchased(self: PurchaseServiceServer, 
 		-- Clear pending gift
 		self.PendingGifts[player.UserId] = nil
 	end
-	
+
 	if not self.GamepassCache[targetPlayer] then
 		self.GamepassCache[targetPlayer] = {}
 	end
 	self.GamepassCache[targetPlayer][gamepassName] = true
-	
+
 	-- Save to target player's data
 	if DataService:hasProfile(targetPlayer) then
 		local gamepasses = DataService:get(targetPlayer, { "Gamepasses" }) or {}
 		gamepasses[gamepassName] = true
 		DataService:set(targetPlayer, { "Gamepasses" }, gamepasses)
 	end
-	
+
 	self.OnGamepassPurchased:Fire(targetPlayer, robloxId, gamepassName)
 	self.Networker:fire({ targetPlayer }, "GamepassPurchased", robloxId, gamepassName)
-	
+
 	-- Track purchase
 	if AnalyticsService then
 		local price = self.PricesCache.Gamepasses[gamepassName] or 0
 		AnalyticsService:trackPurchaseCompleted(player, "gamepass", gamepassName, price)
 	end
-	
+
 	-- If it was a gift, notify the buyer too
 	if targetPlayer ~= player then
 		self.Networker:fire({ player }, "GiftSent", gamepassName, targetPlayer.DisplayName)
@@ -272,31 +272,31 @@ function PurchaseServiceServer.processReceipt(self: PurchaseServiceServer, recei
 	if not player then
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
-	
+
 	local robloxId = receiptInfo.ProductId
-	
+
 	-- Check if this is a donation product
 	if self.LeaderboardService and self.LeaderboardService:isDonationProduct(robloxId) then
 		local donationValue = self.LeaderboardService:getDonationValue(robloxId)
 		self.LeaderboardService:recordDonation(player, robloxId)
 		self.Networker:fire({ player }, "DonationReceived", robloxId, donationValue)
-		
+
 		-- Track donation
 		if AnalyticsService then
 			AnalyticsService:trackDonation(player, donationValue)
 			AnalyticsService:trackPurchaseCompleted(player, "donation", tostring(robloxId), donationValue)
 		end
-		
+
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
-	
+
 	local productName, product = Purchases.findProductByRobloxId(robloxId)
-	
+
 	if productName and product then
 		-- Check if this was a gift purchase
 		local pendingGift = self.PendingGifts[player.UserId]
 		local targetPlayer = player
-		
+
 		if pendingGift and pendingGift.type == "product" and pendingGift.itemName == productName then
 			-- This was a gift - give to recipient instead
 			local recipient = Players:GetPlayerByUserId(pendingGift.recipientUserId)
@@ -310,40 +310,40 @@ function PurchaseServiceServer.processReceipt(self: PurchaseServiceServer, recei
 			-- Clear pending gift
 			self.PendingGifts[player.UserId] = nil
 		end
-		
-		-- Handle cash products
-		if product.cash and self.CurrencyService then
-			-- Note: VIP multiplier does NOT apply to purchased cash (only in-game earnings)
-			self.CurrencyService:addCash(targetPlayer, product.cash, "product_" .. productName)
+
+		-- Handle coin products
+		if product.coins and self.CurrencyService then
+			-- Note: VIP multiplier does NOT apply to purchased coins (only in-game earnings)
+			self.CurrencyService:addCoins(targetPlayer, product.coins, "product_" .. productName)
 		end
-		
+
 		-- Note: Slot unlock products are handled by InventoryService listening to OnProductPurchased
 		-- Pass the target player so it unlocks for the right person
-		
+
 		self.OnProductPurchased:Fire(targetPlayer, robloxId, productName)
 		self.Networker:fire({ targetPlayer }, "ProductPurchased", robloxId, productName)
-		
+
 		-- Track purchase
 		if AnalyticsService then
 			local price = self.PricesCache.Products[productName] or 0
 			AnalyticsService:trackPurchaseCompleted(player, "devproduct", productName, price)
 		end
-		
+
 		-- If it was a gift, notify the buyer too
 		if targetPlayer ~= player then
 			self.Networker:fire({ player }, "GiftSent", productName, targetPlayer.DisplayName)
 		end
-		
+
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
-	
+
 	return Enum.ProductPurchaseDecision.NotProcessedYet
 end
 
 -- ========== GAMEPASS BENEFIT CHECKS ==========
 
--- Supporter: 2x cash from IN-GAME earnings (wins, tasks, etc.) - NOT purchased cash
-function PurchaseServiceServer.getCashMultiplier(self: PurchaseServiceServer, player: Player): number
+-- Supporter: 2x coins from IN-GAME earnings (wins, tasks, etc.) - NOT purchased coins
+function PurchaseServiceServer.getCoinsMultiplier(self: PurchaseServiceServer, player: Player): number
 	if self:ownsGamepass(player, "Supporter") then
 		return 2
 	end
@@ -387,27 +387,32 @@ function PurchaseServiceServer.PromptProduct(_self: PurchaseServiceServer, playe
 	end
 end
 
-function PurchaseServiceServer.PromptGiftGamepass(self: PurchaseServiceServer, player: Player, gamepassName: string, recipientUserId: number)
+function PurchaseServiceServer.PromptGiftGamepass(
+	self: PurchaseServiceServer,
+	player: Player,
+	gamepassName: string,
+	recipientUserId: number
+)
 	-- Find recipient player
 	local recipient = Players:GetPlayerByUserId(recipientUserId)
 	if not recipient then
 		self.Networker:fire({ player }, "PurchaseFailed", "Recipient not found in game")
 		return
 	end
-	
+
 	-- Check price level compatibility
 	local canGift, reason = self:canGiftBetweenUsers(player, recipient)
 	if not canGift then
 		self.Networker:fire({ player }, "PurchaseFailed", reason or "Cannot gift to this player")
 		return
 	end
-	
+
 	-- Check if recipient already owns it
 	if self:ownsGamepass(recipient, gamepassName) then
 		self.Networker:fire({ player }, "PurchaseFailed", "Player already owns this gamepass")
 		return
 	end
-	
+
 	local robloxId = Purchases.getGamepassRobloxId(gamepassName)
 	if robloxId > 0 then
 		-- Store pending gift so we know to give to recipient when purchase completes
@@ -416,27 +421,32 @@ function PurchaseServiceServer.PromptGiftGamepass(self: PurchaseServiceServer, p
 			itemName = gamepassName,
 			recipientUserId = recipientUserId,
 		}
-		
+
 		-- Prompt the purchase
 		MarketplaceService:PromptGamePassPurchase(player, robloxId)
 	end
 end
 
-function PurchaseServiceServer.PromptGiftProduct(self: PurchaseServiceServer, player: Player, productName: string, recipientUserId: number)
+function PurchaseServiceServer.PromptGiftProduct(
+	self: PurchaseServiceServer,
+	player: Player,
+	productName: string,
+	recipientUserId: number
+)
 	-- Find recipient player
 	local recipient = Players:GetPlayerByUserId(recipientUserId)
 	if not recipient then
 		self.Networker:fire({ player }, "PurchaseFailed", "Recipient not found in game")
 		return
 	end
-	
+
 	-- Check price level compatibility
 	local canGift, reason = self:canGiftBetweenUsers(player, recipient)
 	if not canGift then
 		self.Networker:fire({ player }, "PurchaseFailed", reason or "Cannot gift to this player")
 		return
 	end
-	
+
 	local robloxId = Purchases.getProductRobloxId(productName)
 	if robloxId > 0 then
 		-- Store pending gift so we know to give to recipient when purchase completes
@@ -445,7 +455,7 @@ function PurchaseServiceServer.PromptGiftProduct(self: PurchaseServiceServer, pl
 			itemName = productName,
 			recipientUserId = recipientUserId,
 		}
-		
+
 		-- Prompt the purchase
 		MarketplaceService:PromptProductPurchase(player, robloxId)
 	end
@@ -458,7 +468,7 @@ function PurchaseServiceServer.GetOwnedGamepasses(self: PurchaseServiceServer, p
 		task.wait(0.1)
 		waited += 0.1
 	end
-	
+
 	-- If still not loaded, trigger a fresh load
 	if not self.GamepassLoadedFlags[player] then
 		self:loadGamepasses(player)
@@ -472,10 +482,13 @@ end
 -- Used to protect trades and gifts from price arbitrage
 
 -- Get price levels for multiple users (cached)
-function PurchaseServiceServer.getUserPriceLevels(self: PurchaseServiceServer, userIds: { number }): { [number]: number }
+function PurchaseServiceServer.getUserPriceLevels(
+	self: PurchaseServiceServer,
+	userIds: { number }
+): { [number]: number }
 	local uncachedIds = {}
 	local results = {}
-	
+
 	-- Check cache first
 	for _, userId in userIds do
 		if self.PriceLevelCache[userId] then
@@ -484,13 +497,13 @@ function PurchaseServiceServer.getUserPriceLevels(self: PurchaseServiceServer, u
 			table.insert(uncachedIds, userId)
 		end
 	end
-	
+
 	-- Fetch uncached price levels
 	if #uncachedIds > 0 then
 		local success, priceLevels = pcall(function()
 			return MarketplaceService:GetUsersPriceLevelsAsync(uncachedIds)
 		end)
-		
+
 		if success and priceLevels then
 			for userId, level in priceLevels do
 				self.PriceLevelCache[userId] = level
@@ -505,7 +518,7 @@ function PurchaseServiceServer.getUserPriceLevels(self: PurchaseServiceServer, u
 			end
 		end
 	end
-	
+
 	return results
 end
 
@@ -516,22 +529,27 @@ function PurchaseServiceServer.getUserPriceLevel(self: PurchaseServiceServer, pl
 end
 
 -- Check if gifting/trading is allowed between two users based on price levels
-function PurchaseServiceServer.canGiftBetweenUsers(self: PurchaseServiceServer, fromPlayer: Player, toPlayer: Player): (boolean, string?)
+function PurchaseServiceServer.canGiftBetweenUsers(
+	self: PurchaseServiceServer,
+	fromPlayer: Player,
+	toPlayer: Player
+): (boolean, string?)
 	local levels = self:getUserPriceLevels({ fromPlayer.UserId, toPlayer.UserId })
-	
+
 	local fromLevel = levels[fromPlayer.UserId] or 1000
 	local toLevel = levels[toPlayer.UserId] or 1000
-	
+
 	local difference = math.abs(fromLevel - toLevel)
-	
+
 	if difference > MAX_PRICE_LEVEL_DIFFERENCE then
-		return false, string.format(
-			"Regional pricing difference too large (%d). Maximum allowed: %d",
-			difference,
-			MAX_PRICE_LEVEL_DIFFERENCE
-		)
+		return false,
+			string.format(
+				"Regional pricing difference too large (%d). Maximum allowed: %d",
+				difference,
+				MAX_PRICE_LEVEL_DIFFERENCE
+			)
 	end
-	
+
 	return true, nil
 end
 
@@ -541,7 +559,7 @@ function PurchaseServiceServer.preloadPriceLevels(self: PurchaseServiceServer)
 	for _, player in Players:GetPlayers() do
 		table.insert(userIds, player.UserId)
 	end
-	
+
 	if #userIds > 0 then
 		task.spawn(function()
 			self:getUserPriceLevels(userIds)

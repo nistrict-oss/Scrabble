@@ -7,6 +7,9 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local React = require(ReplicatedStorage.Packages.React)
+local TextButton = require(ReplicatedStorage.UI.components.buttons.TextButton)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
+local InGameVolumeSlider = require(ReplicatedStorage.UI.components.game.InGameVolumeSlider)
 
 local e = React.createElement
 
@@ -16,22 +19,31 @@ export type PlayerScore = {
 	Score: number,
 	IsCurrentTurn: boolean,
 	TimeRemaining: number?, -- seconds
+	IsEliminated: boolean?, -- player is eliminated but still shown
 }
 
 export type ScoreBoardProps = {
 	Players: { PlayerScore },
 	TilesRemaining: number?,
 	ListRef: any?,
+	Settings: { StarDoublesPoints: boolean? }?,
 	OnReportPosition: (userId: number, pos: Vector2) -> (),
+	OnLeave: (() -> ())?,
+	LocalUserId: number,
 }
 
-local function ScoreEntry(
-	props: { Player: PlayerScore, LayoutOrder: number, OnReportPosition: (number, Vector2) -> () }
-)
+local function ScoreEntry(props: {
+	Player: PlayerScore,
+	LayoutOrder: number,
+	OnReportPosition: (number, Vector2) -> (),
+	OnLeave: (() -> ())?,
+	IsLocal: boolean,
+})
 	local player = props.Player
 	local prevScore = React.useRef(player.Score)
 	local scaleRef = React.useRef(nil :: UIScale?)
 	local frameRef = React.useRef(nil :: Frame?)
+	local isEliminated = player.IsEliminated == true
 
 	local function reportPosition()
 		local frame = frameRef.current
@@ -59,63 +71,81 @@ local function ScoreEntry(
 		end
 	end, { player.Score })
 
+	-- Determine colors based on state
+	local bgColor = if isEliminated
+		then Color3.fromRGB(60, 60, 70) -- Grey for eliminated
+		elseif player.IsCurrentTurn then Color3.fromRGB(255, 45, 150)
+		else Color3.fromRGB(40, 60, 110)
+
+	local textColor = if isEliminated
+		then Color3.fromRGB(120, 120, 130) -- Muted grey text
+		else Color3.new(1, 1, 1)
+
+	local scoreColor = if isEliminated
+		then Color3.fromRGB(100, 100, 110)
+		elseif player.IsCurrentTurn then Color3.new(1, 1, 1)
+		else Color3.fromRGB(249, 0, 149)
+
 	return e("Frame", {
 		ref = frameRef,
 		[React.Change.AbsolutePosition] = reportPosition,
-		Size = UDim2.fromScale(1, 0.5),
-		BackgroundColor3 = if player.IsCurrentTurn then Color3.fromRGB(249, 0, 149) else Color3.fromRGB(45, 70, 120),
+		Size = UDim2.new(1, 0, 0, 50), -- Fixed height of 50px per entry
+		BackgroundColor3 = bgColor,
 		LayoutOrder = props.LayoutOrder,
 	}, {
 		UIScale = e("UIScale", { ref = scaleRef }),
 
 		UICorner = e("UICorner", {
-			CornerRadius = UDim.new(0.2, 0),
-		}),
-
-		UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-			AspectRatio = 5.6,
+			CornerRadius = UDim.new(0, 8),
 		}),
 
 		UIStroke = e("UIStroke", {
-			Color = Color3.new(1, 1, 1),
-			Thickness = if player.IsCurrentTurn then 2 else 1,
-			Transparency = if player.IsCurrentTurn then 0 else 0.5,
+			Color = if isEliminated then Color3.fromRGB(80, 80, 90) else Color3.new(1, 1, 1),
+			Thickness = if player.IsCurrentTurn and not isEliminated then 2 else 1,
+			Transparency = if isEliminated then 0.7 elseif player.IsCurrentTurn then 0 else 0.5,
 		}),
 
 		UIPadding = e("UIPadding", {
-			PaddingBottom = UDim.new(0.1, 0),
-			PaddingTop = UDim.new(0.1, 0),
-			PaddingLeft = UDim.new(0.03, 0),
-			PaddingRight = UDim.new(0.03, 0),
+			PaddingBottom = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
 		}),
 
 		Avatar = e("ImageLabel", {
-			Size = UDim2.fromScale(0.12, 0.8),
-			Position = UDim2.fromScale(0.01, 0.1),
+			Size = UDim2.fromScale(0.15, 0.85),
+			Position = UDim2.fromScale(0.01, 0.5),
+			AnchorPoint = Vector2.new(0, 0.5),
 			BackgroundTransparency = 1,
-			Image = "rbxthumb://type=AvatarHeadShot&id=" .. player.UserId .. "&w=150&h=150",
+			-- Use ID 1 for CPU players (negative IDs) so they have a valid avatar
+			Image = "rbxthumb://type=AvatarHeadShot&id="
+				.. (if player.UserId < 0 then 1 else player.UserId)
+				.. "&w=150&h=150",
+			ImageTransparency = if isEliminated then 0.5 else 0,
 		}, {
 			UICorner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			UIAspectRatioConstraint = e("UIAspectRatioConstraint", { AspectRatio = 1 }),
 			UIStroke = e("UIStroke", {
-				Color = Color3.new(1, 1, 1),
+				Color = if isEliminated then Color3.fromRGB(80, 80, 90) else Color3.new(1, 1, 1),
 				Thickness = 2,
+				Transparency = if isEliminated then 0.5 else 0,
 			}),
 		}),
 
 		Name = e("TextLabel", {
-			Size = UDim2.fromScale(0.5, if player.TimeRemaining then 0.5 else 1),
-			Position = UDim2.fromScale(0.17, 0),
+			Size = UDim2.fromScale(0.5, if player.TimeRemaining and not isEliminated then 0.5 else 1),
+			Position = UDim2.fromScale(0.18, 0),
 			BackgroundTransparency = 1,
-			Text = player.Name,
-			TextColor3 = Color3.new(1, 1, 1),
+			Text = player.Name .. (if isEliminated then " (OUT)" else ""),
+			TextColor3 = textColor,
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
 		}),
 
-		TimeRemaining = player.TimeRemaining and e("TextLabel", {
-			Size = UDim2.fromScale(0.4, 0.35),
-			Position = UDim2.fromScale(0.22, 0.55),
+		TimeRemaining = player.TimeRemaining and not isEliminated and e("TextLabel", {
+			Size = UDim2.fromScale(0.4, 0.4),
+			Position = UDim2.fromScale(0.18, 0.55),
 			BackgroundTransparency = 1,
 			Text = if player.TimeRemaining >= 3600
 				then string.format(
@@ -132,15 +162,25 @@ local function ScoreEntry(
 		}) or nil,
 
 		Score = e("TextLabel", {
-			Size = UDim2.fromScale(0.25, 1),
-			Position = UDim2.fromScale(0.75, 0),
+			Size = UDim2.fromScale(0.2, 1),
+			Position = UDim2.fromScale(0.78, 0),
 			BackgroundTransparency = 1,
 			Text = tostring(player.Score),
-			TextColor3 = if player.IsCurrentTurn then Color3.new(1, 1, 1) else Color3.fromRGB(249, 0, 149),
+			TextColor3 = scoreColor,
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Right,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Normal),
 		}),
+
+		LeaveButton = props.IsLocal and props.OnLeave and not isEliminated and e(TextButton, {
+			Text = "X",
+			Variant = "danger",
+			Size = UDim2.fromScale(0.1, 0.6),
+			Position = UDim2.fromScale(0.98, 0.5),
+			AnchorPoint = Vector2.new(1, 0.5),
+			CornerRadius = UDim.new(0.5, 0),
+			OnClick = props.OnLeave,
+		}) or nil,
 	})
 end
 
@@ -151,25 +191,39 @@ return function(props: ScoreBoardProps)
 	local entries = {}
 	for i = 1, math.min(#players, 10) do
 		local player = players[i]
-		entries["Player_" .. player.UserId] = e(ScoreEntry, {
-			Player = player,
-			LayoutOrder = i,
-			OnReportPosition = props.OnReportPosition,
-		})
+		table.insert(
+			entries,
+			e(ScoreEntry, {
+				key = "Player_" .. tostring(player.UserId),
+				Player = player,
+				LayoutOrder = i,
+				OnReportPosition = props.OnReportPosition,
+				OnLeave = props.OnLeave,
+				IsLocal = player.UserId == props.LocalUserId,
+			})
+		)
 	end
 
-	entries["UIListLayout"] = e("UIListLayout", {
-		FillDirection = Enum.FillDirection.Vertical,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-	})
+	table.insert(
+		entries,
+		e("UIListLayout", {
+			key = "UIListLayout",
+			FillDirection = Enum.FillDirection.Vertical,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0.01, 0),
+		})
+	)
 
 	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(30, 45, 90), -- Match GameBoard
+		BackgroundColor3 = Color3.new(1, 1, 1), -- White for gradient
 	}, {
+		UIGradient = e("UIGradient", {
+			Color = ColorSequence.new(GameConstants.Gradients.frame),
+			Rotation = 90,
+		}),
 		UICorner = e("UICorner", {
-			CornerRadius = UDim.new(0.05, 0),
+			CornerRadius = UDim.new(0, 12),
 		}),
 
 		UIStroke = e("UIStroke", {
@@ -178,43 +232,56 @@ return function(props: ScoreBoardProps)
 		}),
 
 		UIPadding = e("UIPadding", {
-			PaddingBottom = UDim.new(0.03, 0),
-			PaddingTop = UDim.new(0.03, 0),
-			PaddingLeft = UDim.new(0.05, 0),
-			PaddingRight = UDim.new(0.05, 0),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
 		}),
 
 		Header = e("TextLabel", {
-			Size = UDim2.fromScale(1, 0.05),
+			Size = UDim2.new(1, 0, 0, 20),
 			BackgroundTransparency = 1,
-			Text = "SCORES",
+			Text = if props.Settings and props.Settings.StarDoublesPoints == false then "SCORES" else "SCORES (★ 2X)",
 			TextColor3 = Color3.new(1, 1, 1),
 			TextScaled = true,
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
 		}),
 
 		PlayerList = e(
-			"Frame",
+			"ScrollingFrame",
 			{
-				Size = UDim2.fromScale(1, 0.9), -- Take up most of the space
-				Position = UDim2.fromOffset(0, 35),
+				Size = UDim2.new(1, 0, 1, -100), -- Leave room for header, volume slider, and tiles remaining
+				Position = UDim2.new(0, 0, 0, 24),
 				BackgroundTransparency = 1,
+				ScrollBarThickness = 4,
+				ScrollBarImageColor3 = Color3.fromRGB(200, 200, 220),
+				AutomaticCanvasSize = Enum.AutomaticSize.Y,
+				CanvasSize = UDim2.new(0, 0, 0, 0),
 				ref = props.ListRef,
 			},
 			entries,
 			{
 				UIPadding = e("UIPadding", {
-					PaddingBottom = UDim.new(0.03, 0),
-					PaddingTop = UDim.new(0.03, 0),
-					PaddingLeft = UDim.new(0.05, 0),
-					PaddingRight = UDim.new(0.05, 0),
+					PaddingBottom = UDim.new(0, 4),
+					PaddingTop = UDim.new(0, 4),
+					PaddingLeft = UDim.new(0, 4),
+					PaddingRight = UDim.new(0, 4),
 				}),
 			}
 		),
 
+		-- Volume slider above tiles remaining
+		VolumeSliderContainer = e("Frame", {
+			Size = UDim2.new(1, 0, 0, 36),
+			Position = UDim2.new(0, 0, 1, -58),
+			BackgroundTransparency = 1,
+		}, {
+			Slider = e(InGameVolumeSlider),
+		}),
+
 		TilesRemaining = e("TextLabel", {
-			Size = UDim2.fromScale(1, 0.05),
-			Position = UDim2.fromScale(0, 0.96),
+			Size = UDim2.new(1, 0, 0, 18),
+			Position = UDim2.new(0, 0, 1, -18),
 			BackgroundTransparency = 1,
 			Text = "Tiles in bag: " .. tilesRemaining,
 			TextColor3 = Color3.fromRGB(150, 150, 180),

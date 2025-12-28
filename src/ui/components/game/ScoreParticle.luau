@@ -23,7 +23,12 @@ export type ScoreParticleProps = {
 }
 
 return function(props: ScoreParticleProps)
-	local position, setPosition = React.useBinding(UDim2.fromOffset(props.StartPos.X, props.StartPos.Y))
+	local camera = workspace.CurrentCamera
+	local screen = camera.ViewportSize
+	local startScaleX = props.StartPos.X / screen.X
+	local startScaleY = props.StartPos.Y / screen.Y
+
+	local position, setPosition = React.useBinding(UDim2.fromScale(startScaleX, startScaleY))
 	local transparency, setTransparency = React.useBinding(0)
 	local scale, setScale = React.useBinding(0)
 	local rotation, setRotation = React.useBinding(math.random(-15, 15))
@@ -91,7 +96,7 @@ return function(props: ScoreParticleProps)
 			local p1 = (p0 + p2) / 2 + Vector2.new(0, -150) -- Arc upwards
 
 			local currentPos = (1 - alpha) ^ 2 * p0 + 2 * (1 - alpha) * alpha * p1 + alpha ^ 2 * p2
-			setPosition(UDim2.fromOffset(currentPos.X, currentPos.Y))
+			setPosition(UDim2.fromScale(currentPos.X / screen.X, currentPos.Y / screen.Y))
 
 			-- Pop, Scale and Transparency effects
 			-- 0.0 -> 0.2: Pop in (0 to 1.2 scale)
@@ -132,7 +137,7 @@ return function(props: ScoreParticleProps)
 
 	return e("TextLabel", {
 		Position = position,
-		Size = UDim2.fromOffset(60, 40),
+		Size = UDim2.fromScale(0.06, 0.04),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 1,
 		TextTransparency = transparency,

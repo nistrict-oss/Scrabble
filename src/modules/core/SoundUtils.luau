@@ -6,13 +6,24 @@ local TweenService = game:GetService("TweenService")
 
 local GameConstants = require(script.Parent.GameConstants)
 
+local SoundUtils = {}
+
+-- Menu/Lobby music (same as loading screen music for seamless transition)
+local LOBBY_MUSIC_ID = "rbxassetid://83775010804048"
+local MUSIC_FADE_TIME = 0.5 -- Fast, smooth fade duration
+local lobbyMusic: Sound? = nil
+local gameMusic: Sound? = nil
+local loadingMusic: Sound? = nil
+local currentFadeTween: Tween? = nil
+
+-- Loading screen sounds
+local BUBBLE_POP_ID = "rbxassetid://85730811347567"
+
 -- Try to get SettingsServiceClient (may not exist in Hoarcekat)
 local SettingsServiceClient
 pcall(function()
 	SettingsServiceClient = require(ReplicatedStorage.Shared.Services.SettingsService.SettingsServiceClient)
 end)
-
-local SoundUtils = {}
 
 -- Preloaded sound cache for instant playback
 local preloadedSounds: { [string]: Sound } = {}
@@ -51,33 +62,23 @@ function SoundUtils.canPlaySounds(): boolean
 	return RunService:IsRunning()
 end
 
--- Menu/Lobby music
-local LOBBY_MUSIC_ID = "rbxassetid://9046863253"
-local MUSIC_FADE_TIME = 0.5 -- Fast, smooth fade duration
-local lobbyMusic: Sound? = nil
-local currentFadeTween: Tween? = nil
-
--- Loading screen sounds
-local BUBBLE_POP_ID = "rbxassetid://85730811347567"
-local UNDERWATER_AMBIENCE_ID = "rbxassetid://5033884807"
-
--- Check if SFX is enabled and get volume multiplier
+-- Check if SFX volume multiplier
 function SoundUtils.getSFXVolume(): number
 	if SettingsServiceClient then
-		if not SettingsServiceClient:isSFXEnabled() then
-			return 0
-		end
 		return SettingsServiceClient.Settings.SFXVolume or 0.8
 	end
 	return 0.8 -- Default if settings not available
 end
 
--- Check if Music is enabled and get volume multiplier
-function SoundUtils.getMusicVolume(): number
+-- Check if Music volume multiplier
+function SoundUtils.getMusicVolume(musicType: ("Lobby" | "Game")?): number
 	if SettingsServiceClient then
-		if not SettingsServiceClient:isMusicEnabled() then
-			return 0
+		if musicType == "Lobby" then
+			return SettingsServiceClient.Settings.LobbyMusicVolume or 0.5
+		elseif musicType == "Game" then
+			return SettingsServiceClient.Settings.GameMusicVolume or 0.3
 		end
+
 		return SettingsServiceClient.Settings.MusicVolume or 0.7
 	end
 	return 0.7 -- Default if settings not available
@@ -87,6 +88,11 @@ end
 function SoundUtils.playLobbyMusic()
 	-- Don't play sounds in Hoarcekat or when not running
 	if not SoundUtils.canPlaySounds() then
+		return
+	end
+
+	-- If loading music is playing, don't play lobby music
+	if SoundUtils.isLoadingMusicPlaying() then
 		return
 	end
 
@@ -105,7 +111,7 @@ function SoundUtils.playLobbyMusic()
 
 	-- If already playing, just fade back in
 	if lobbyMusic and lobbyMusic.Parent then
-		local targetVolume = 0.5
+		local targetVolume = SoundUtils.getMusicVolume("Lobby")
 		local fadeTween = TweenService:Create(
 			lobbyMusic,
 			TweenInfo.new(MUSIC_FADE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -121,9 +127,9 @@ function SoundUtils.playLobbyMusic()
 	if not musicGroup then
 		musicGroup = Instance.new("SoundGroup")
 		musicGroup.Name = "Music"
-		musicGroup.Volume = SoundUtils.getMusicVolume()
 		musicGroup.Parent = SoundService
 	end
+	musicGroup.Volume = 1
 
 	local newMusic = Instance.new("Sound")
 	newMusic.Name = "LobbyMusic"
@@ -136,7 +142,7 @@ function SoundUtils.playLobbyMusic()
 	lobbyMusic = newMusic
 
 	-- Fade in
-	local targetVolume = 0.5
+	local targetVolume = SoundUtils.getMusicVolume("Lobby")
 	local fadeTween = TweenService:Create(
 		newMusic,
 		TweenInfo.new(MUSIC_FADE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -181,16 +187,30 @@ function SoundUtils.isLobbyMusicPlaying(): boolean
 	return lobbyMusic ~= nil and lobbyMusic.IsPlaying
 end
 
+-- Check if loading music is playing
+function SoundUtils.isLoadingMusicPlaying(): boolean
+	return loadingMusic ~= nil and loadingMusic.IsPlaying
+end
+
+-- ============== LOADING MUSIC (Deprecated) ==============
+-- Loading music functionality has been merged into Lobby Music.
+-- playLobbyMusic() is now called directly from LoadingScreen.
+
 -- ============== GAME MUSIC PLAYLIST ==============
 
 local GAME_MUSIC_IDS = {
-	"rbxassetid://1838457617",
-	"rbxassetid://1848354536",
-	"rbxassetid://1845341094",
-	"rbxassetid://1847856717",
+	"rbxassetid://9045765634",
+	"rbxassetid://9045766377",
+	"rbxassetid://9045766074",
+	"rbxassetid://1842150151",
+	"rbxassetid://9045765295",
+	"rbxassetid://9045764969",
+	"rbxassetid://1842150565",
+	"rbxassetid://1848056295",
+	"rbxassetid://1842150470",
+	"rbxassetid://85297174440725",
 }
 
-local gameMusic: Sound? = nil
 local gameMusicConn: RBXScriptConnection? = nil
 
 -- Play a random game music track
@@ -224,7 +244,7 @@ function SoundUtils.playGameMusic()
 		if not musicGroup then
 			musicGroup = Instance.new("SoundGroup")
 			musicGroup.Name = "Music"
-			musicGroup.Volume = SoundUtils.getMusicVolume()
+			musicGroup.Volume = 1
 			musicGroup.Parent = SoundService
 		end
 
@@ -244,7 +264,7 @@ function SoundUtils.playGameMusic()
 		end)
 
 		-- Fade in
-		local targetVolume = 0.3 -- Lowered volume as requested
+		local targetVolume = SoundUtils.getMusicVolume("Game")
 		local fadeTween = TweenService:Create(
 			newSound,
 			TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -282,99 +302,6 @@ function SoundUtils.stopGameMusic()
 	end)
 end
 
--- ============== LOADING SCREEN SOUNDS ==============
-
-local underwaterAmbience: Sound? = nil
-local ambienceFadeTween: Tween? = nil
-
--- Play underwater bubbling ambience (for loading screen only)
-function SoundUtils.playUnderwaterAmbience()
-	if not SoundUtils.canPlaySounds() then
-		return nil
-	end
-
-	-- Cancel any existing fade
-	if ambienceFadeTween then
-		ambienceFadeTween:Cancel()
-		ambienceFadeTween = nil
-	end
-
-	-- Clean up any existing ambience
-	for _, child in SoundService:GetChildren() do
-		if child:IsA("Sound") and child.Name == "UnderwaterAmbience" and child ~= underwaterAmbience then
-			child:Destroy()
-		end
-	end
-
-	-- If already playing, just fade back in
-	if underwaterAmbience and underwaterAmbience.Parent then
-		local fadeTween = TweenService:Create(
-			underwaterAmbience,
-			TweenInfo.new(MUSIC_FADE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Volume = 0.4 }
-		)
-		ambienceFadeTween = fadeTween
-		fadeTween:Play()
-		return underwaterAmbience
-	end
-
-	-- Create or find Music group
-	local musicGroup = SoundService:FindFirstChild("Music")
-	if not musicGroup then
-		musicGroup = Instance.new("SoundGroup")
-		musicGroup.Name = "Music"
-		musicGroup.Volume = SoundUtils.getMusicVolume()
-		musicGroup.Parent = SoundService
-	end
-
-	local newAmbience = Instance.new("Sound")
-	newAmbience.Name = "UnderwaterAmbience"
-	newAmbience.SoundId = UNDERWATER_AMBIENCE_ID
-	newAmbience.Volume = 0
-	newAmbience.Looped = true
-	newAmbience.SoundGroup = musicGroup
-	newAmbience.Parent = SoundService
-	newAmbience:Play()
-	underwaterAmbience = newAmbience
-
-	-- Fade in
-	local fadeTween = TweenService:Create(
-		newAmbience,
-		TweenInfo.new(MUSIC_FADE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Volume = 0.4 }
-	)
-	ambienceFadeTween = fadeTween
-	fadeTween:Play()
-
-	return newAmbience
-end
-
--- Stop underwater ambience (fades out)
-function SoundUtils.stopUnderwaterAmbience()
-	if ambienceFadeTween then
-		ambienceFadeTween:Cancel()
-		ambienceFadeTween = nil
-	end
-
-	if not underwaterAmbience then
-		return
-	end
-
-	local sound = underwaterAmbience
-	underwaterAmbience = nil
-
-	local fadeTween = TweenService:Create(
-		sound,
-		TweenInfo.new(MUSIC_FADE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Volume = 0 }
-	)
-	ambienceFadeTween = fadeTween
-	fadeTween:Play()
-	fadeTween.Completed:Once(function()
-		sound:Stop()
-		sound:Destroy()
-	end)
-end
 
 -- Play bubble pop sound (for loading screen letter reveal)
 function SoundUtils.playBubblePop()
@@ -412,11 +339,18 @@ function SoundUtils.playSound(soundId: string, baseVolume: number?)
 		return nil
 	end
 
-	local volume = (baseVolume or 0.5) * sfxVolume
+	local sfxGroup = SoundService:FindFirstChild("SFX")
+	if not sfxGroup then
+		sfxGroup = Instance.new("SoundGroup")
+		sfxGroup.Name = "SFX"
+		sfxGroup.Parent = SoundService
+	end
+	sfxGroup.Volume = sfxVolume
 
 	local sound = Instance.new("Sound")
 	sound.SoundId = soundId
-	sound.Volume = volume
+	sound.Volume = (baseVolume or 0.5) -- Volume is already controlled by Group
+	sound.SoundGroup = sfxGroup
 	sound.Parent = SoundService
 	sound:Play()
 	sound.Ended:Once(function()
@@ -467,7 +401,7 @@ function SoundUtils.playPurchaseSuccess()
 end
 
 function SoundUtils.playWoosh()
-	return SoundUtils.playSoundFromConstants("WOOSH")
+	return
 end
 
 function SoundUtils.playVictory()
@@ -534,6 +468,26 @@ end
 local ABILITY_ACTIVATE_ID = "rbxassetid://119695407202262"
 function SoundUtils.playAbilityActivate()
 	return SoundUtils.playSound(ABILITY_ACTIVATE_ID, 0.8)
+end
+
+-- Connect settings listeners
+if SettingsServiceClient then
+	SettingsServiceClient.OnSettingUpdated:Connect(function(name, _)
+		if name == "LobbyMusicVolume" then
+			if lobbyMusic and lobbyMusic.Parent then
+				lobbyMusic.Volume = SoundUtils.getMusicVolume("Lobby")
+			end
+		elseif name == "GameMusicVolume" then
+			if gameMusic and gameMusic.Parent then
+				gameMusic.Volume = SoundUtils.getMusicVolume("Game")
+			end
+		elseif name == "SFXVolume" then
+			local sfxGroup = SoundService:FindFirstChild("SFX")
+			if sfxGroup then
+				sfxGroup.Volume = SoundUtils.getSFXVolume()
+			end
+		end
+	end)
 end
 
 return SoundUtils

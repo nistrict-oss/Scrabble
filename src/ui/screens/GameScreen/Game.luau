@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local React = require(ReplicatedStorage.Packages.React)
+local GameConstants = require(ReplicatedStorage.Shared.Modules.Core.GameConstants)
 local GameBoard = require(ReplicatedStorage.UI.components.game.GameBoard)
 local PlayerRack = require(ReplicatedStorage.UI.components.game.PlayerRack)
 local ScoreBoard = require(ReplicatedStorage.UI.components.game.ScoreBoard)
@@ -22,6 +23,12 @@ local WordValidationDisplay = require(ReplicatedStorage.UI.components.game.WordV
 local ScoreContext = require(ReplicatedStorage.UI.contexts.ScoreContext)
 local useWordValidatorHook = require(ReplicatedStorage.UI.hooks.useWordValidator) -- Kept original import logic
 local EndScreen = require(ReplicatedStorage.UI.screens.GameScreen.EndScreen)
+local EliminationScreen = require(ReplicatedStorage.UI.screens.GameScreen.EliminationScreen)
+local BlankTileModal = require(ReplicatedStorage.UI.components.game.BlankTileModal)
+local FirstGameHelper = require(ReplicatedStorage.UI.components.game.FirstGameHelper)
+local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
+local SettingsServiceClient = require(ReplicatedStorage.Shared.Services.SettingsService.SettingsServiceClient)
+local useCosmetics = require(ReplicatedStorage.UI.hooks.useCosmetics)
 
 local e = React.createElement
 local useWordValidator = useWordValidatorHook.useWordValidator
@@ -39,18 +46,36 @@ return function(props: GameProps)
 	local gameState = props.GameState
 	local lobbyState = props.LobbyState
 	local spawnParticle = useContext(ScoreContext)
+	local localCosmetics = useCosmetics() -- Get local player's cosmetics for preview tiles
+
+	-- Settings state
+	local showRecentHighlight, setShowRecentHighlight = React.useState(function()
+		return SettingsServiceClient:getSetting("ShowRecentHighlight") == true
+	end)
+
+	React.useEffect(function()
+		local conn = SettingsServiceClient.OnSettingUpdated:Connect(function(name, val)
+			if name == "ShowRecentHighlight" then
+				setShowRecentHighlight(val)
+			end
+		end)
+		return function()
+			conn:Disconnect()
+		end
+	end, {})
 
 	-- Local placement state
 	local selectedTileIndex, setSelectedTileIndex = React.useState(nil :: number?)
 	local placedTiles, setPlacedTiles =
 		React.useState({} :: { { row: number, col: number, letter: string, rackIndex: number } })
 
-	-- Drag and drop state
-	local draggingIndex, setDraggingIndex = React.useState(nil :: number?)
-	local draggingLetter, setDraggingLetter = React.useState(nil :: string?)
-	local dragHoverCell, setDragHoverCell = React.useState(nil :: { row: number, col: number }?)
-	local lastHoverPos = React.useRef(nil :: string?)
+	-- Blank tile assignments { ["row,col"] = assignedLetter }
+	local blankAssignments, setBlankAssignments = React.useState({} :: { [string]: string })
+	-- Pending blank tile that needs letter assignment
+	local pendingBlankPosition, setPendingBlankPosition =
+		React.useState(nil :: { row: number, col: number, rackIndex: number }?)
 
+	-- Drag and drop state
 	-- Exchange mode state
 	local isExchangeMode, setIsExchangeMode = React.useState(false)
 	-- Track exchange selection with rack indices instead of display indices
@@ -59,13 +84,44 @@ return function(props: GameProps)
 	local stashedTiles, setStashedTiles =
 		React.useState({} :: { [number]: { row: number, col: number, letter: string, rackIndex: number } })
 
+	local draggingIndex, setDraggingIndex = React.useState(nil :: number?)
+	local draggingLetter, setDraggingLetter = React.useState(nil :: string?)
+	local dragHoverCell, setDragHoverCell = React.useState(nil :: { row: number, col: number }?)
+	local lastHoverPos = React.useRef(nil :: string?)
+
 	-- Spam Block State
 	local isBlocked, setIsBlocked = React.useState(false)
+
+	-- Rack visual order (for shuffling)
+	local rackOrder, setRackOrder = React.useState({ 1, 2, 3, 4, 5, 6, 7 })
+
+	-- Resignation confirmation (for leaving multiplayer)
+	local showResignConfirm, setShowResignConfirm = React.useState(false)
+
+	-- Tutorial Play Button tracking
+	local playButtonPos, setPlayButtonPos = React.useState(nil :: Vector2?)
+
+	-- Submit confirmation (for playing a word)
+	local showSubmitConfirm, setShowSubmitConfirm = React.useState(false)
+
+	-- Force spectator mode (for eliminated players who chose to spectate)
+	local forceSpectatorMode, setForceSpectatorMode = React.useState(false)
+
+	-- Force show end screen (for eliminated players who want to see their stats before leaving)
+	local forceShowEndScreen, setForceShowEndScreen = React.useState(false)
+
+	-- First game tutorial helper visibility
+	local showTutorialHelper, setShowTutorialHelper = React.useState(function()
+		return not SettingsServiceClient:isTutorialCompleted()
+	end)
 
 	-- Chat state
 	local chatMessage, setChatMessage = React.useState("")
 	local chatInputRef = React.useRef(nil :: TextBox?)
 	local logScrollRef = React.useRef(nil :: ScrollingFrame?)
+
+	-- Swap state
+	local isExchanging, setIsExchanging = React.useState(false)
 
 	-- Visual scoreboard state (decoupled from server)
 	local visualScores, setVisualScores = React.useState({} :: { [string]: number })
@@ -73,6 +129,7 @@ return function(props: GameProps)
 	-- Score animation state
 	local playerGoalPositions = React.useRef({} :: { [number]: Vector2 })
 	local tileAbsolutePositions = React.useRef({} :: { [string]: Vector2 })
+	local rackTilePositions = React.useRef({} :: { [number]: Vector2 })
 	local pendingAnimations = React.useRef({} :: { [number]: { tiles: { { pos: Vector2, amount: number } } } })
 	local prevScores = React.useRef({} :: { [string]: number })
 
@@ -132,9 +189,29 @@ return function(props: GameProps)
 	local scores = if gameState then (gameState.Scores or {}) else {}
 	local turnOrder = if gameState then (gameState.TurnOrder or {}) else {}
 	local turnIndex = if gameState then (gameState.TurnIndex or 1) else 1
-	local isSpectator = gameState and gameState.IsSpectator == true
+	local isSpectator = (gameState and gameState.IsSpectator == true) or forceSpectatorMode
 	local tilesInBag = if gameState then (gameState.BagCount or 0) else 0
 	local currentTurnUserId = if gameState then (gameState.TurnUserId or turnOrder[turnIndex]) else nil
+
+	-- Slot versioning to trigger animations ONLY on actual changes
+	local rackVersions, setRackVersions = React.useState({ 0, 0, 0, 0, 0, 0, 0 })
+	local lastRack = React.useRef(myRack)
+	React.useEffect(function()
+		if myRack then
+			setRackVersions(function(prev)
+				local next = table.clone(prev)
+				local changed = false
+				for i = 1, 7 do
+					if (myRack[i] or "") ~= (lastRack.current[i] or "") then
+						next[i] += 1
+						changed = true
+					end
+				end
+				lastRack.current = myRack
+				return if changed then next else prev
+			end)
+		end
+	end, { myRack })
 
 	-- Delayed turn switch for animations
 	local visualTurnUserId, setVisualTurnUserId = React.useState(currentTurnUserId)
@@ -157,38 +234,22 @@ return function(props: GameProps)
 
 	local isMyTurn = visualTurnUserId == LocalPlayer.UserId and not (gameState and gameState.IsSpectator)
 
-	-- Track which tiles are placed or exchanged
+	-- Track which tiles are placed or dragging
 	local hiddenIndices = {}
-
-	-- Mark placed tiles as hidden
 	for _, placed in ipairs(placedTiles) do
 		hiddenIndices[placed.rackIndex] = true
 	end
-
-	-- Mark exchanged tiles as hidden in exchange mode
-	if isExchangeMode then
-		for i, selected in pairs(exchangeSelection) do
-			if selected then
-				hiddenIndices[i] = true
-			end
-		end
+	if draggingIndex then
+		hiddenIndices[draggingIndex] = true
 	end
 
-	-- Build display rack maintaining original order
-	local displayRack = {}
-	local rackIndexToDisplayIndex = {}
-	local displayIndex = 1
-
-	for i = 1, #myRack do
-		if not hiddenIndices[i] then
-			table.insert(displayRack, myRack[i])
-			rackIndexToDisplayIndex[i] = displayIndex
-			displayIndex += 1
+	-- Build display rack using the current rackOrder (with stable IDs for animation)
+	local fullRack = {}
+	for _, originalIndex in ipairs(rackOrder) do
+		if originalIndex <= #myRack then
+			table.insert(fullRack, { id = originalIndex, letter = myRack[originalIndex] })
 		end
 	end
-
-	-- Get the display index for the currently dragging tile
-	local draggingDisplayIndex = draggingIndex and rackIndexToDisplayIndex[draggingIndex] or nil
 
 	-- Build display board (merge server board with local placements)
 	local displayBoard = {}
@@ -200,54 +261,101 @@ return function(props: GameProps)
 	end
 
 	local previewCells = {}
+	local localColorIds = localCosmetics.Equipped -- Get the color IDs (not Color3 values)
 	for _, placed in ipairs(placedTiles) do
-		displayBoard[placed.row][placed.col] = placed.letter
+		local posKey = placed.row .. "," .. placed.col
+		-- Check if this is a blank tile using our assignments
+		local isBlankTile = blankAssignments[posKey] ~= nil
+		-- Store as tile data with local player's colors for preview
+		displayBoard[placed.row][placed.col] = {
+			letter = placed.letter,
+			colors = localColorIds, -- Local player's equipped colors for their preview tiles
+			isBlank = isBlankTile, -- Mark blank tiles so they show 0 points
+		}
 		table.insert(previewCells, { row = placed.row, col = placed.col })
 	end
 
+	-- Consolidation of settings
+	local effectiveSettings = (lobbyState and lobbyState.Settings) or (gameState and gameState.Settings)
+
 	-- Word validation (MUST be called before any early returns)
-	local wordValidation = useWordValidator(placedTiles, board)
+	local wordValidation = useWordValidator(placedTiles, board, effectiveSettings, blankAssignments)
 
 	-- Turn Notification logic
-	local lastTurnUserId = React.useRef(nil)
-	local turnAnnouncement, setTurnAnnouncement = React.useState(nil :: { Name: string, IsLocal: boolean }?)
+	local lastMoveRef = React.useRef(nil :: string?) -- Track last move fingerprint
+	local turnAnnouncement, setTurnAnnouncement =
+		React.useState(nil :: { Name: string, IsLocal: boolean, Key: string }?)
 
+	-- This effect triggers on gameState changes and checks if turn changed
 	React.useEffect(function()
-		if
-			gameState
-			and gameState.Phase == "inGame"
-			and visualTurnUserId
-			and visualTurnUserId ~= lastTurnUserId.current
-		then
-			lastTurnUserId.current = visualTurnUserId
+		if not gameState or gameState.Phase ~= "inGame" then
+			setTurnAnnouncement(nil)
+			return
+		end
 
-			-- Only show turn announcement in multiplayer
-			-- Solo play uses a separate score-based trigger for encouragement
-			if #turnOrder > 1 then
-				-- Find player name
-				local name = "Unknown"
-				if lobbyState and lobbyState.Players then
-					for _, p in ipairs(lobbyState.Players) do
-						if p.UserId == currentTurnUserId then
-							name = p.Name
-							break
-						end
+		local announceTurnUserId = gameState.TurnUserId
+		local announceTurnIndex = gameState.TurnIndex
+		local lastMove = gameState.LastMove
+		local lastAction = gameState.LastAction
+
+		-- Create fingerprint from turn state
+		local turnFingerprint = tostring(announceTurnIndex or 0) .. "_" .. tostring(announceTurnUserId or 0)
+
+		-- Add LastMove data if it exists (for word placement)
+		if lastMove and lastMove.UserId and lastMove.PlacedTiles then
+			local tileCount = #lastMove.PlacedTiles
+			local firstTile = lastMove.PlacedTiles[1]
+			local tileKey = firstTile and (tostring(firstTile.r) .. "," .. tostring(firstTile.c)) or "0,0"
+			turnFingerprint = turnFingerprint
+				.. "_"
+				.. tostring(lastMove.TotalScore or 0)
+				.. "_"
+				.. tostring(tileCount)
+				.. "_"
+				.. tileKey
+		end
+
+		-- Add LastAction data if it exists (for pass/exchange)
+		if lastAction and lastAction.Type then
+			turnFingerprint = turnFingerprint
+				.. "_action_"
+				.. lastAction.Type
+				.. "_"
+				.. tostring(lastAction.UserId or 0)
+		end
+
+		-- Only show announcement if something changed
+		if lastMoveRef.current ~= turnFingerprint and turnIndex and turnIndex > 0 then
+			lastMoveRef.current = turnFingerprint
+
+			-- Show whose turn it is
+			local name = "Unknown"
+			if lobbyState and lobbyState.Players then
+				for _, p in ipairs(lobbyState.Players) do
+					if p.UserId == currentTurnUserId then
+						name = p.Name
+						break
 					end
 				end
-
-				setTurnAnnouncement({
-					Name = name,
-					IsLocal = currentTurnUserId == LocalPlayer.UserId,
-					IsSolo = false, -- Multiplayer doesn't use encouragement phrases
-				})
 			end
+
+			-- Check CPUPlayerNames for CPU players
+			if gameState.CPUPlayerNames and gameState.CPUPlayerNames[tostring(currentTurnUserId)] then
+				name = gameState.CPUPlayerNames[tostring(currentTurnUserId)]
+			end
+
+			setTurnAnnouncement({
+				Name = name,
+				IsLocal = currentTurnUserId == LocalPlayer.UserId,
+				Key = turnFingerprint,
+			})
 
 			-- Clear after animation duration
 			task.delay(3, function()
 				setTurnAnnouncement(nil)
 			end)
 		end
-	end, { visualTurnUserId })
+	end, { gameState })
 
 	if not gameState then
 		return e("Frame", {
@@ -278,21 +386,64 @@ return function(props: GameProps)
 	end
 
 	local playerScores = {}
+	local eliminatedPlayers = gameState.EliminatedPlayers or {}
+
+	-- Build a set of active player IDs (still in turn order)
+	local activePlayerSet = {}
+	for _, oderId in ipairs(turnOrder) do
+		local userId = tonumber(oderId) or oderId
+		activePlayerSet[userId] = true
+		activePlayerSet[tostring(userId)] = true
+	end
+
+	-- First add active players (in turn order)
 	for _, oderId in ipairs(turnOrder) do
 		-- userId might be string or number after network transfer
 		local userId = tonumber(oderId) or oderId
 		local player = Players:GetPlayerByUserId(userId)
+
+		-- Get name: check CPUPlayerNames for CPU players (negative IDs)
+		local playerName
+		if userId < 0 then
+			-- CPU player - get name from CPUPlayerNames
+			local cpuNames = gameState.CPUPlayerNames or {}
+			playerName = cpuNames[tostring(userId)] or ("CPU " .. tostring(math.abs(userId)))
+		else
+			-- Human player
+			playerName = player and player.Name or ("Player " .. tostring(userId))
+		end
+
 		table.insert(playerScores, {
 			UserId = userId,
-			Name = player and player.Name or ("Player " .. tostring(userId)),
+			Name = playerName,
 			Score = getScore(userId),
 			IsCurrentTurn = userId == visualTurnUserId or tostring(userId) == tostring(visualTurnUserId),
 			TimeRemaining = getPlayerTime(userId),
+			IsEliminated = false,
 		})
 	end
 
-	-- Solo Play Encouragement Trigger (Score based)
-	local lastMyScore = React.useRef(0)
+	-- Then add eliminated players (greyed out at the bottom)
+	if lobbyState and lobbyState.Players then
+		for _, lobbyPlayer in ipairs(lobbyState.Players) do
+			local userId = lobbyPlayer.UserId
+			-- Check if this player is eliminated (not in active set)
+			local isActive = activePlayerSet[userId] or activePlayerSet[tostring(userId)]
+			local isEliminated = eliminatedPlayers[userId] or eliminatedPlayers[tostring(userId)]
+
+			if not isActive and isEliminated then
+				local player = Players:GetPlayerByUserId(userId)
+				table.insert(playerScores, {
+					UserId = userId,
+					Name = player and player.Name or lobbyPlayer.Name or ("Player " .. tostring(userId)),
+					Score = getScore(userId),
+					IsCurrentTurn = false,
+					TimeRemaining = nil, -- Don't show time for eliminated players
+					IsEliminated = true,
+				})
+			end
+		end
+	end
 
 	-- Spam Prevention (Rate Limiting)
 	local spamState = React.useRef({ history = {}, blockedUntil = 0 })
@@ -383,16 +534,15 @@ return function(props: GameProps)
 						-- Check for remote player animation data from LastMove
 						local lastMove = gameState.LastMove
 						if lastMove and lastMove.UserId == userId and goalPos and spawnParticle then
-							local placedTiles = lastMove.PlacedTiles or {}
+							local lastMoveTiles = lastMove.PlacedTiles or {}
 							local totalScore = lastMove.TotalScore or 0
-							local tileCount = #placedTiles
-
+							local tileCount = #lastMoveTiles
 							if tileCount > 0 then
 								local tilesToAnimate = {}
 								local scorePerTile = math.floor(totalScore / tileCount)
 								local remainder = totalScore % tileCount
 
-								for i, tile in ipairs(placedTiles) do
+								for i, tile in ipairs(lastMoveTiles) do
 									local posKey = tile.r .. "," .. tile.c
 									local pos = tileAbsolutePositions.current[posKey]
 									if pos then
@@ -445,31 +595,111 @@ return function(props: GameProps)
 		end)
 	end, { scores })
 
+	-- Time Warning Log Entries (visible to all players in the game log)
+	-- Each warning tracks the log index when it was added so it appears in correct position
+	local timeWarnings, setTimeWarnings = React.useState({} :: { { text: string, color: string, logIndex: number } })
+	local timeWarningsShown = React.useRef({
+		fiveMin = false,
+		oneMin = false,
+		tenSec = false,
+		countdown = 0, -- Last countdown number shown
+	})
+
 	React.useEffect(function()
-		if #turnOrder == 1 and gameState and gameState.Phase == "inGame" then
-			local currentScore = getScore(LocalPlayer.UserId)
-			if currentScore > lastMyScore.current then
-				lastMyScore.current = currentScore
+		if not gameState or gameState.Phase ~= "inGame" then
+			-- Reset warnings when game ends or changes
+			timeWarningsShown.current = {
+				fiveMin = false,
+				oneMin = false,
+				tenSec = false,
+				countdown = 0,
+			}
+			setTimeWarnings({})
+			return
+		end
 
-				-- Trigger announcement
-				setTurnAnnouncement({
-					Name = LocalPlayer.Name,
-					IsLocal = true,
-					IsSolo = true,
-				})
+		-- Get current turn player's time
+		local currentTurnTime = getPlayerTime(visualTurnUserId)
+		if not currentTurnTime then
+			return
+		end
 
-				task.delay(3, function()
-					setTurnAnnouncement(nil)
+		-- Get current turn player's name
+		local turnPlayer = Players:GetPlayerByUserId(visualTurnUserId)
+		local turnPlayerName = turnPlayer and turnPlayer.Name or "Player"
+		local isLocal = visualTurnUserId == LocalPlayer.UserId
+
+		-- Get current log length to track when warning was added
+		local currentLogIndex = gameState.Log and #gameState.Log or 0
+
+		-- 5 minute warning (300 seconds)
+		if currentTurnTime <= 300 and currentTurnTime > 60 and not timeWarningsShown.current.fiveMin then
+			timeWarningsShown.current.fiveMin = true
+			local msg = if isLocal
+				then "⏱ 5 minutes remaining!"
+				else "⏱ " .. turnPlayerName .. " has 5 minutes left"
+			setTimeWarnings(function(prev)
+				local next = table.clone(prev)
+				table.insert(next, { text = msg, color = "warning", logIndex = currentLogIndex })
+				return next
+			end)
+		end
+
+		-- 1 minute warning (60 seconds)
+		if currentTurnTime <= 60 and currentTurnTime > 10 and not timeWarningsShown.current.oneMin then
+			timeWarningsShown.current.oneMin = true
+			local msg = if isLocal then "⚠ 1 minute remaining!" else "⚠ " .. turnPlayerName .. " has 1 minute left"
+			setTimeWarnings(function(prev)
+				local next = table.clone(prev)
+				table.insert(next, { text = msg, color = "warning", logIndex = currentLogIndex })
+				return next
+			end)
+		end
+
+		-- 10 second countdown
+		if currentTurnTime <= 10 and currentTurnTime > 0 then
+			local secondsLeft = math.floor(currentTurnTime)
+			if secondsLeft ~= timeWarningsShown.current.countdown and secondsLeft > 0 then
+				timeWarningsShown.current.countdown = secondsLeft
+				local msg = if isLocal
+					then "⚠ " .. secondsLeft .. " seconds!"
+					else turnPlayerName .. ": " .. secondsLeft .. "s"
+				setTimeWarnings(function(prev)
+					local next = table.clone(prev)
+					table.insert(next, { text = msg, color = "critical", logIndex = currentLogIndex })
+					return next
 				end)
-			elseif currentScore < lastMyScore.current then
-				-- Reset (e.g. game restart)
-				lastMyScore.current = currentScore
 			end
 		end
-	end, { scores })
+
+		-- Reset warnings when turn changes
+	end, { visualTurnUserId, playerTimes } :: { any })
+
+	-- Reset time warnings when turn changes
+	local prevTurnUserId = React.useRef(nil :: any)
+	React.useEffect(function()
+		if prevTurnUserId.current ~= visualTurnUserId then
+			timeWarningsShown.current = {
+				fiveMin = false,
+				oneMin = false,
+				tenSec = false,
+				countdown = 0,
+			}
+			setTimeWarnings({})
+			prevTurnUserId.current = visualTurnUserId
+		end
+	end, { visualTurnUserId })
+
+	-- (Removed old score-based solo announcement - now handled in LastMove effect above)
 
 	-- Handlers
 	local function handleTileClick(index: number, _: string)
+		if not isExchangeMode then
+			-- In normal mode, clicking letters on the rack is disabled (drag only)
+			-- This prevents accidental selection/overlap with drag logic
+			return
+		end
+
 		if selectedTileIndex == index then
 			setSelectedTileIndex(nil)
 		else
@@ -479,24 +709,9 @@ return function(props: GameProps)
 
 	-- Drag handlers
 	local function handleDragStart(index: number, letter: string)
-		-- Find actual rack index
-		local actualIndex = 0
-		local count = 0
-		for i, _ in ipairs(myRack) do
-			if not hiddenIndices[i] then
-				count += 1
-				if count == index then
-					actualIndex = i
-					break
-				end
-			end
-		end
-
-		if actualIndex > 0 then
-			setDraggingIndex(actualIndex)
-			setDraggingLetter(letter)
-			setSelectedTileIndex(nil)
-		end
+		setDraggingIndex(index)
+		setDraggingLetter(letter)
+		setSelectedTileIndex(nil)
 	end
 
 	local function handleDragEnter(row: number, col: number)
@@ -535,9 +750,22 @@ return function(props: GameProps)
 		if rackIndex then
 			-- Remove from placed tiles
 			setPlacedTiles(newPlaced)
-			-- Start dragging this tile
+			-- Check if this was a blank tile BEFORE clearing
+			local posKey = row .. "," .. col
+			local wasBlank = blankAssignments[posKey] ~= nil
+			-- Clear any blank assignment for this position
+			if wasBlank then
+				setBlankAssignments(function(prev)
+					local newAssignments = table.clone(prev)
+					newAssignments[posKey] = nil
+					return newAssignments
+				end)
+			end
+			-- Start dragging this tile (use original rack letter, not the displayed one)
 			setDraggingIndex(rackIndex)
-			setDraggingLetter(letter)
+			-- If this was a blank, we need to drag the "?" not the assigned letter
+			local originalLetter = if wasBlank then "?" else letter
+			setDraggingLetter(originalLetter)
 		end
 	end
 
@@ -576,6 +804,15 @@ return function(props: GameProps)
 			rackIndex = draggingIndex,
 		})
 		setPlacedTiles(newPlaced)
+
+		-- If this is a blank tile, show the letter picker modal
+		if draggingLetter == "?" then
+			setPendingBlankPosition({
+				row = row,
+				col = col,
+				rackIndex = draggingIndex,
+			})
+		end
 
 		-- Clear drag state
 		setDraggingIndex(nil)
@@ -663,11 +900,9 @@ return function(props: GameProps)
 
 					if type == "board" then
 						handleDrop(r, c)
-					elseif type == "rack" then
-						cancelDrag() -- Dropped back to rack
+					else
+						cancelDrag() -- Dropped back to rack or outside
 					end
-
-					cancelDrag() -- Dropped outside
 				end)
 			end
 		end)
@@ -706,26 +941,13 @@ return function(props: GameProps)
 				end
 				setPlacedTiles(newPlaced)
 				setSelectedTileIndex(nil)
+				SoundUtils.playTilePop() -- Play sound when removing a tile
 				return
 			end
 		end
 
-		-- Find the actual rack index for the selected tile
-		local actualIndex = 0
-		local count = 0
-		for i, _ in ipairs(myRack) do
-			if not hiddenIndices[i] then
-				count += 1
-				if count == selectedTileIndex then
-					actualIndex = i
-					break
-				end
-			end
-		end
-
-		if actualIndex == 0 then
-			return
-		end
+		-- Play pop sound when tile is successfully placed
+		SoundUtils.playTilePop()
 
 		-- Place the tile
 		local newPlaced = {}
@@ -735,8 +957,8 @@ return function(props: GameProps)
 		table.insert(newPlaced, {
 			row = row,
 			col = col,
-			letter = myRack[actualIndex],
-			rackIndex = actualIndex,
+			letter = myRack[selectedTileIndex],
+			rackIndex = selectedTileIndex,
 		})
 		setPlacedTiles(newPlaced)
 		setSelectedTileIndex(nil)
@@ -745,6 +967,7 @@ return function(props: GameProps)
 	local function handleClear()
 		setPlacedTiles({})
 		setSelectedTileIndex(nil)
+		setBlankAssignments({}) -- Clear all blank assignments
 	end
 
 	local function handleSubmit()
@@ -757,6 +980,13 @@ return function(props: GameProps)
 
 		-- Check validation before submitting
 		if not wordValidation.isValid then
+			SoundUtils.playWrong() -- Play error sound on invalid submission
+			return
+		end
+
+		-- Check for Move Confirmation setting
+		if SettingsServiceClient:getSetting("ConfirmMoves") == true and not showSubmitConfirm then
+			setShowSubmitConfirm(true)
 			return
 		end
 
@@ -782,11 +1012,40 @@ return function(props: GameProps)
 			tiles = tilesToAnimate,
 		}
 
+		-- Build tiles with blank assignments for server
+		local tilesForServer = {}
+		for _, placed in ipairs(placedTiles) do
+			local posKey = placed.row .. "," .. placed.col
+			local assignedLetter = blankAssignments[posKey]
+			if assignedLetter then
+				-- This is a blank tile with an assigned letter
+				table.insert(tilesForServer, {
+					row = placed.row,
+					col = placed.col,
+					letter = assignedLetter, -- The letter it represents
+					originalLetter = "?", -- Mark as blank
+					rackIndex = placed.rackIndex,
+				})
+			else
+				-- Normal tile
+				table.insert(tilesForServer, placed)
+			end
+		end
+
 		-- Send placed tiles to server
-		ScrabbleServiceClient:placeWord(placedTiles, wordValidation.direction)
+		ScrabbleServiceClient:placeWord(tilesForServer, wordValidation.direction)
+
+		-- Complete tutorial if this was the first move
+		if not SettingsServiceClient:isTutorialCompleted() then
+			SettingsServiceClient:completeTutorial()
+			setShowTutorialHelper(false)
+		end
 
 		-- Clear local state
 		handleClear()
+		setBlankAssignments({})
+		setShowSubmitConfirm(false)
+		SoundUtils.playButtonClick() -- Play sound on successful submission
 	end
 
 	local function handlePass()
@@ -806,7 +1065,6 @@ return function(props: GameProps)
 			local lettersToExchange = {}
 			local exchangeIndices = {}
 
-			-- Find all selected tiles by their rack indices
 			for rackIndex, selected in pairs(exchangeSelection) do
 				if selected and myRack[rackIndex] then
 					table.insert(lettersToExchange, myRack[rackIndex])
@@ -814,7 +1072,8 @@ return function(props: GameProps)
 				end
 			end
 
-			if #lettersToExchange > 0 then
+			if #lettersToExchange > 0 and not isExchanging then
+				setIsExchanging(true)
 				-- Store which positions are being exchanged to maintain order
 				local exchangeData = {
 					Letters = lettersToExchange,
@@ -822,17 +1081,24 @@ return function(props: GameProps)
 				}
 
 				ScrabbleServiceClient:exchangeTiles(exchangeData)
+				-- Clear board for next turn
+				handleClear()
 			end
 
 			-- Exit exchange mode
 			setIsExchangeMode(false)
 			setExchangeSelection({})
 			setStashedTiles({})
+			setSelectedTileIndex(nil)
+			task.delay(0.5, function()
+				setIsExchanging(false)
+			end)
 		else
 			-- Enter exchange mode
 			setIsExchangeMode(true)
 			setExchangeSelection({})
 			setStashedTiles({})
+			setSelectedTileIndex(nil)
 		end
 	end
 
@@ -846,6 +1112,9 @@ return function(props: GameProps)
 			return newPlaced
 		end)
 
+		setIsExchangeMode(false)
+		setExchangeSelection({})
+		setStashedTiles({})
 		setIsExchangeMode(false)
 		setExchangeSelection({})
 		setStashedTiles({})
@@ -905,19 +1174,40 @@ return function(props: GameProps)
 		end)
 	end
 
+	local function handleShuffle()
+		local newOrder = table.clone(rackOrder)
+		for i = #newOrder, 2, -1 do
+			local j = math.random(i)
+			newOrder[i], newOrder[j] = newOrder[j], newOrder[i]
+		end
+		setRackOrder(newOrder)
+		setRackOrder(newOrder)
+	end
+
+	local function handleResign()
+		if gameState and gameState.Phase == "inGame" then
+			setShowResignConfirm(true)
+		else
+			-- Not in a round, just leave
+			if props.OnLeave then
+				props.OnLeave()
+			end
+			ScrabbleServiceClient:leaveLobby()
+		end
+	end
+
+	local function confirmResign()
+		setShowResignConfirm(false)
+		ScrabbleServiceClient:resign()
+		if props.OnLeave then
+			props.OnLeave()
+		end
+	end
+
 	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 1,
 	}, {
-		UIGradient = e("UIGradient", {
-			Color = hue:map(function(h)
-				return ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromHSV(h, 0.7, 0.2)), -- Dark, saturated blue
-					ColorSequenceKeypoint.new(1, Color3.fromHSV((h + 0.05) % 1, 0.7, 0.1)),
-				})
-			end),
-			Rotation = rotation,
-		}),
 
 		-- Drag preview (floating tile following mouse)
 		DragPreviewUI = draggingLetter and e(DragPreview, {
@@ -948,6 +1238,8 @@ return function(props: GameProps)
 				ScoreBoard = e(ScoreBoard, {
 					Players = playerScores,
 					TilesRemaining = tilesInBag,
+					Settings = effectiveSettings,
+					LocalUserId = LocalPlayer.UserId,
 					OnReportPosition = function(uid, pos)
 						playerGoalPositions.current[uid] = pos
 						playerGoalPositions.current[tostring(uid)] = pos
@@ -971,6 +1263,9 @@ return function(props: GameProps)
 						PreviewCells = previewCells,
 						IsWordValid = wordValidation.isValid,
 						DragHoverCell = dragHoverCell,
+						LastMove = gameState.LastMove, -- Pass recent move data
+						LocalUserId = LocalPlayer.UserId, -- Pass local user ID for filtering overlays
+						ShowRecentHighlight = showRecentHighlight, -- Pass highlight setting
 						OnCellClick = handleCellClick,
 						OnCellDrop = handleDrop,
 						OnCellDragEnter = handleDragEnter,
@@ -1009,10 +1304,10 @@ return function(props: GameProps)
 				}, {
 					Rack = not isSpectator
 							and e(PlayerRack, {
-								-- In exchange mode, show full rack; otherwise show display rack
-								Letters = if isExchangeMode then myRack else displayRack,
+								Letters = fullRack,
+								HiddenIndices = hiddenIndices,
 								SelectedIndex = selectedTileIndex,
-								DraggingIndex = draggingDisplayIndex,
+								DraggingIndex = draggingIndex, -- Use the stable ID
 								IsDragging = draggingLetter ~= nil,
 								IsDisabled = not isMyTurn or isSpectator,
 								IsExchangeMode = isExchangeMode,
@@ -1023,22 +1318,52 @@ return function(props: GameProps)
 								OnDragStart = handleDragStart,
 								OnDropToRack = cancelDrag,
 								OnExchangeToggle = toggleExchangeTile,
+								OnReportPosition = function(index, pos)
+									rackTilePositions.current[index] = pos
+								end,
+								RackVersions = rackVersions,
 							})
-						or e("TextLabel", {
+						or e("Frame", {
 							Size = UDim2.fromScale(1, 1),
 							BackgroundTransparency = 1,
-							Text = "SPECTATING",
-							TextColor3 = Color3.new(1, 1, 1),
-							TextScaled = true,
-							FontFace = Font.new(
-								"rbxassetid://11702779517",
-								Enum.FontWeight.Heavy,
-								Enum.FontStyle.Italic
-							),
 						}, {
-							UIStroke = e("UIStroke", {
-								Color = Color3.fromRGB(249, 0, 149),
-								Thickness = 2,
+							UIListLayout = e("UIListLayout", {
+								FillDirection = Enum.FillDirection.Horizontal,
+								HorizontalAlignment = Enum.HorizontalAlignment.Center,
+								VerticalAlignment = Enum.VerticalAlignment.Center,
+								Padding = UDim.new(0.05, 0),
+							}),
+
+							SpectatingLabel = e("TextLabel", {
+								Size = UDim2.fromScale(0.5, 0.8),
+								BackgroundTransparency = 1,
+								Text = "SPECTATING",
+								TextColor3 = Color3.new(1, 1, 1),
+								TextScaled = true,
+								LayoutOrder = 1,
+								FontFace = Font.new(
+									"rbxassetid://11702779517",
+									Enum.FontWeight.Heavy,
+									Enum.FontStyle.Italic
+								),
+							}, {
+								UIStroke = e("UIStroke", {
+									Color = Color3.fromRGB(249, 0, 149),
+									Thickness = 2,
+								}),
+							}),
+
+							LeaveButton = e(TextButton, {
+								Text = "Leave Game",
+								Variant = "secondary",
+								Size = UDim2.fromScale(0.25, 0.7),
+								LayoutOrder = 2,
+								OnClick = function()
+									if props.OnLeave then
+										props.OnLeave()
+									end
+									ScrabbleServiceClient:leaveLobby()
+								end,
 							}),
 						}),
 				}),
@@ -1066,40 +1391,27 @@ return function(props: GameProps)
 						OnSubmit = handleSubmit,
 						OnPass = handlePass,
 						OnExchange = handleExchange,
+						OnShuffle = handleShuffle,
+						OnResign = handleResign,
 						OnCancelExchange = handleCancelExchange,
 						OnClear = handleClear,
-						CanPass = #turnOrder > 1,
-					}) or e("Frame", {
-						Size = UDim2.fromScale(0.25, 1),
-						Position = UDim2.fromScale(0.5, 0),
-						AnchorPoint = Vector2.new(0.5, 0),
-						BackgroundTransparency = 1,
-					}, {
-						LeaveButton = e(TextButton, {
-							Text = "Leave",
-							Variant = "secondary",
-							Size = UDim2.fromScale(1, 1),
-							OnClick = function()
-								if props.OnLeave then
-									props.OnLeave()
-								end
-								ScrabbleServiceClient:leaveLobby()
-							end,
-						}),
-
-						UIPadding = e("UIPadding", {
-							PaddingBottom = UDim.new(0.3, 0),
-						}),
-					}),
+						CanPass = true,
+						IsBusy = isExchanging,
+						OnReportPlayButtonPosition = setPlayButtonPos,
+					}) or nil,
 				}),
 			}),
 
 			-- RightPanel: Game log / chat
 			RightPanel = e("Frame", {
 				Size = UDim2.fromScale(0.18, 1),
-				BackgroundColor3 = Color3.fromRGB(30, 45, 90), -- Match GameBoard
+				BackgroundColor3 = Color3.new(1, 1, 1), -- White for gradient
 				LayoutOrder = 3,
 			}, {
+				UIGradient = e("UIGradient", {
+					Color = ColorSequence.new(GameConstants.Gradients.frame),
+					Rotation = 90,
+				}),
 				UICorner = e("UICorner", {
 					CornerRadius = UDim.new(0.03, 0),
 				}),
@@ -1138,12 +1450,15 @@ return function(props: GameProps)
 							AnchorPoint = Vector2.new(0.5, 0),
 							BackgroundTransparency = 1,
 							ScrollBarThickness = 0,
+							AutomaticCanvasSize = Enum.AutomaticSize.Y,
+							CanvasSize = UDim2.fromScale(0, 0),
 						},
 						(function()
 							local children = {
 								UIListLayout = e("UIListLayout", {
 									SortOrder = Enum.SortOrder.LayoutOrder,
 									VerticalAlignment = Enum.VerticalAlignment.Bottom,
+									Padding = UDim.new(0, 4),
 								}),
 								UIPadding = e("UIPadding", {
 									PaddingLeft = UDim.new(0.02, 0),
@@ -1179,10 +1494,53 @@ return function(props: GameProps)
 								end
 							end
 
+							-- Add time warning entries (local client state) at their correct positions
+							-- Sort warnings by logIndex to insert them in order
+							local sortedWarnings = table.clone(timeWarnings)
+							table.sort(sortedWarnings, function(a, b)
+								return a.logIndex < b.logIndex
+							end)
+
+							-- Insert warnings at their correct positions (offset for previous insertions)
+							local insertOffset = 0
+							for _, warning in ipairs(sortedWarnings) do
+								local insertPosition = warning.logIndex + 1 + insertOffset -- +1 because log is 0-indexed
+								-- Clamp to valid range
+								if insertPosition > #processedLog + 1 then
+									insertPosition = #processedLog + 1
+								end
+								table.insert(processedLog, insertPosition, {
+									isTimeWarning = true,
+									text = warning.text,
+									color = warning.color,
+								})
+								insertOffset = insertOffset + 1
+							end
+
 							local log = processedLog
 
 							for i, entry in ipairs(log) do
-								if type(entry) == "table" and entry.UserId and entry.Message then
+								if type(entry) == "table" and entry.isTimeWarning then
+									-- TIME WARNING (Colored text)
+									local warningColor = if entry.color == "critical"
+										then Color3.fromRGB(255, 80, 80) -- Red for critical
+										else Color3.fromRGB(255, 200, 80) -- Yellow for warning
+									children["Log_" .. i] = e("TextLabel", {
+										Size = UDim2.new(1, 0, 0, 18),
+										BackgroundTransparency = 1,
+										Text = entry.text,
+										TextColor3 = warningColor,
+										TextScaled = true,
+										TextWrapped = true,
+										TextXAlignment = Enum.TextXAlignment.Left,
+										LayoutOrder = i,
+										FontFace = Font.new(
+											"rbxassetid://11702779517",
+											Enum.FontWeight.Heavy,
+											Enum.FontStyle.Normal
+										),
+									})
+								elseif type(entry) == "table" and entry.UserId and entry.Message then
 									-- CHAT MESSAGE (PFP + Name + Text)
 									children["Log_" .. i] = e("Frame", {
 										Size = UDim2.fromScale(1, 0),
@@ -1195,8 +1553,8 @@ return function(props: GameProps)
 										}),
 
 										Avatar = e("ImageLabel", {
-											Size = UDim2.fromOffset(30, 30), -- Fixed size avatar
-											Position = UDim2.fromOffset(0, 0),
+											Size = UDim2.fromScale(0.1, 0.8),
+											Position = UDim2.fromScale(0, 0.1),
 											BackgroundTransparency = 1,
 											Image = "rbxthumb://type=AvatarHeadShot&id="
 												.. entry.UserId
@@ -1204,37 +1562,45 @@ return function(props: GameProps)
 										}, {
 											UICorner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
 											UIStroke = e("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }),
+											UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
+												AspectRatio = 1,
+											}),
 										}),
 
-										Content = e("Frame", {
-											Size = UDim2.fromScale(1, 0),
-											AutomaticSize = Enum.AutomaticSize.Y,
-											Position = UDim2.fromOffset(38, 0), -- Offset by avatar width + gap
+										TextContainer = e("Frame", {
+											Size = UDim2.fromScale(0.88, 1),
+											Position = UDim2.fromScale(0.12, 0),
 											BackgroundTransparency = 1,
+											AutomaticSize = Enum.AutomaticSize.Y,
 										}, {
 											UIListLayout = e("UIListLayout", {
+												FillDirection = Enum.FillDirection.Vertical,
 												SortOrder = Enum.SortOrder.LayoutOrder,
 											}),
 
-											Name = e("TextLabel", {
+											NameLabel = e("TextLabel", {
 												Size = UDim2.fromScale(1, 0),
 												AutomaticSize = Enum.AutomaticSize.Y,
 												BackgroundTransparency = 1,
 												Text = entry.Name or "Unknown",
-												TextColor3 = Color3.fromRGB(249, 0, 149),
-												TextSize = 14,
-												Font = Enum.Font.GothamBold,
+												TextColor3 = Color3.fromRGB(255, 200, 100),
+												TextSize = 16,
 												TextXAlignment = Enum.TextXAlignment.Left,
 												LayoutOrder = 1,
+												FontFace = Font.new(
+													"rbxassetid://11702779517",
+													Enum.FontWeight.Bold,
+													Enum.FontStyle.Normal
+												),
 											}),
 
-											Message = e("TextLabel", {
+											MessageLabel = e("TextLabel", {
 												Size = UDim2.fromScale(0.85, 0), -- Width constraint
 												AutomaticSize = Enum.AutomaticSize.Y,
 												BackgroundTransparency = 1,
 												Text = entry.Message,
 												TextColor3 = Color3.new(1, 1, 1),
-												TextSize = 14,
+												TextSize = 16,
 
 												-- Fix spacing issues
 												RichText = true,
@@ -1255,11 +1621,11 @@ return function(props: GameProps)
 								else
 									-- SYSTEM MESSAGE (Text Only)
 									children["Log_" .. i] = e("TextLabel", {
-										Size = UDim2.fromScale(1, 0.03),
+										Size = UDim2.new(1, 0, 0, 18),
 										BackgroundTransparency = 1,
 										Text = tostring(entry),
 										TextColor3 = Color3.fromRGB(200, 200, 220),
-										TextSize = 20,
+										TextScaled = true,
 										TextWrapped = true,
 										TextXAlignment = Enum.TextXAlignment.Left,
 										LayoutOrder = i,
@@ -1394,16 +1760,292 @@ return function(props: GameProps)
 			}),
 		}),
 
-		EndScreenOverlay = gameState.Phase == "ended" and e(EndScreen, {
-			GameState = gameState,
-			LobbyState = lobbyState,
-			OnLeave = props.OnLeave,
-		}) or nil,
+		EndScreenOverlay = (gameState.Phase == "ended" or forceShowEndScreen)
+				and e(EndScreen, {
+					GameState = gameState,
+					LobbyState = lobbyState,
+					OnLeave = props.OnLeave,
+					IsEliminated = forceShowEndScreen, -- True when eliminated player views stats early
+				})
+			or nil,
 
 		TurnAnnouncementUI = turnAnnouncement and e(TurnAnnouncement, {
+			key = turnAnnouncement.Key,
 			PlayerName = turnAnnouncement.Name,
 			IsLocal = turnAnnouncement.IsLocal,
-			IsSolo = turnAnnouncement.IsSolo,
 		}) or nil,
+
+		-- Elimination screen for players who ran out of time
+		EliminationOverlay = (function()
+			-- Check if local player is eliminated and hasn't chose to spectate
+			-- Note: Network serialization may convert numeric keys to strings, so check both
+			local isEliminated = gameState.EliminatedPlayers
+				and (
+					gameState.EliminatedPlayers[LocalPlayer.UserId]
+					or gameState.EliminatedPlayers[tostring(LocalPlayer.UserId)]
+				)
+			-- Don't show if game ended, already spectating, or viewing stats
+			if not isEliminated or gameState.Phase == "ended" or isSpectator or forceShowEndScreen then
+				return nil
+			end
+			return e(EliminationScreen, {
+				Visible = true,
+				GameState = gameState,
+				OnSpectate = function()
+					-- Force into spectator mode locally
+					setForceSpectatorMode(true)
+				end,
+				OnViewStats = function()
+					-- Show end screen with current stats
+					setForceShowEndScreen(true)
+				end,
+				OnLeave = props.OnLeave,
+			})
+		end)(),
+
+		-- Blank tile letter picker modal
+		BlankTileModalUI = pendingBlankPosition
+				and e(BlankTileModal, {
+					OnSelect = function(selectedLetter)
+						-- Save the blank assignment
+						local posKey = pendingBlankPosition.row .. "," .. pendingBlankPosition.col
+						setBlankAssignments(function(prev)
+							local newAssignments = table.clone(prev)
+							newAssignments[posKey] = selectedLetter
+							return newAssignments
+						end)
+
+						-- Update the placed tile to show the selected letter
+						setPlacedTiles(function(prev)
+							local newPlaced = {}
+							for _, p in ipairs(prev) do
+								if p.row == pendingBlankPosition.row and p.col == pendingBlankPosition.col then
+									table.insert(newPlaced, {
+										row = p.row,
+										col = p.col,
+										letter = selectedLetter, -- Show the assigned letter
+										rackIndex = p.rackIndex,
+									})
+								else
+									table.insert(newPlaced, p)
+								end
+							end
+							return newPlaced
+						end)
+
+						setPendingBlankPosition(nil)
+					end,
+					OnCancel = function()
+						-- Remove the blank tile from placed tiles
+						setPlacedTiles(function(prev)
+							local newPlaced = {}
+							for _, p in ipairs(prev) do
+								if not (p.row == pendingBlankPosition.row and p.col == pendingBlankPosition.col) then
+									table.insert(newPlaced, p)
+								end
+							end
+							return newPlaced
+						end)
+						setPendingBlankPosition(nil)
+					end,
+				})
+			or nil,
+
+		ResignConfirmModal = showResignConfirm and e("Frame", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 0.5,
+			ZIndex = 20000,
+		}, {
+			Modal = e("Frame", {
+				Size = UDim2.fromScale(0.4, 0.35),
+				Position = UDim2.fromScale(0.5, 0.4),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				BackgroundColor3 = Color3.fromRGB(35, 40, 65),
+				BorderSizePixel = 0,
+			}, {
+				UICorner = e("UICorner", { CornerRadius = UDim.new(0, 12) }),
+				UIStroke = e("UIStroke", { Color = Color3.fromRGB(249, 0, 149), Thickness = 3 }),
+
+				Content = e("Frame", {
+					Size = UDim2.fromScale(1, 1),
+					BackgroundTransparency = 1,
+				}, {
+					UIPadding = e("UIPadding", {
+						PaddingTop = UDim.new(0.1, 0),
+						PaddingBottom = UDim.new(0.1, 0),
+						PaddingLeft = UDim.new(0.05, 0),
+						PaddingRight = UDim.new(0.05, 0),
+					}),
+					UIListLayout = e("UIListLayout", {
+						SortOrder = Enum.SortOrder.LayoutOrder,
+						Padding = UDim.new(0.1, 0),
+						HorizontalAlignment = Enum.HorizontalAlignment.Center,
+					}),
+
+					Title = e("TextLabel", {
+						Size = UDim2.fromScale(1, 0.2),
+						BackgroundTransparency = 1,
+						Text = "LEAVE GAME?",
+						TextColor3 = Color3.new(1, 1, 1),
+						TextScaled = true,
+						FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
+						LayoutOrder = 1,
+					}),
+
+					Warning = e("TextLabel", {
+						Size = UDim2.fromScale(1, 0.3),
+						BackgroundTransparency = 1,
+						Text = "Leaving an active game will penalize you 50 Coins and end your turn. Are you sure?",
+						TextColor3 = Color3.fromRGB(255, 100, 100),
+						TextWrapped = true,
+						TextScaled = true,
+						FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium),
+						LayoutOrder = 2,
+					}),
+
+					Buttons = e("Frame", {
+						Size = UDim2.fromScale(1, 0.3),
+						BackgroundTransparency = 1,
+						LayoutOrder = 3,
+					}, {
+						UIListLayout = e("UIListLayout", {
+							FillDirection = Enum.FillDirection.Horizontal,
+							SortOrder = Enum.SortOrder.LayoutOrder,
+							Padding = UDim.new(0.05, 0),
+							HorizontalAlignment = Enum.HorizontalAlignment.Center,
+						}),
+
+						Cancel = e(TextButton, {
+							Text = "Stay",
+							Variant = "secondary",
+							Size = UDim2.fromScale(0.45, 1),
+							OnClick = function()
+								setShowResignConfirm(false)
+							end,
+						}),
+
+						Confirm = e(TextButton, {
+							Text = "Leave & Pay",
+							Variant = "primary",
+							Size = UDim2.fromScale(0.45, 1),
+							OnClick = confirmResign,
+						}),
+					}),
+				}),
+			}),
+		}) or nil,
+
+		-- Word Submit Confirmation Modal
+		SubmitConfirmModal = showSubmitConfirm
+				and e("Frame", {
+					Size = UDim2.fromScale(1, 1),
+					BackgroundColor3 = Color3.new(0, 0, 0),
+					BackgroundTransparency = 0.5,
+					ZIndex = 110, -- Slightly above other modals
+				}, {
+					Dialog = e("Frame", {
+						Size = UDim2.fromScale(0.3, 0.25),
+						Position = UDim2.fromScale(0.5, 0.5),
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						BackgroundColor3 = Color3.fromRGB(40, 60, 100),
+					}, {
+						UICorner = e("UICorner", { CornerRadius = UDim.new(0.05, 0) }),
+						UIStroke = e("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }),
+						UIPadding = e("UIPadding", {
+							PaddingBottom = UDim.new(0.05, 0),
+							PaddingTop = UDim.new(0.05, 0),
+							PaddingLeft = UDim.new(0.05, 0),
+							PaddingRight = UDim.new(0.05, 0),
+						}),
+
+						UIListLayout = e("UIListLayout", {
+							FillDirection = Enum.FillDirection.Vertical,
+							SortOrder = Enum.SortOrder.LayoutOrder,
+							Padding = UDim.new(0.1, 0),
+							HorizontalAlignment = Enum.HorizontalAlignment.Center,
+						}),
+
+						Title = e("TextLabel", {
+							Size = UDim2.fromScale(1, 0.25),
+							BackgroundTransparency = 1,
+							Text = "PLAY WORD?",
+							TextColor3 = Color3.new(1, 1, 1),
+							TextScaled = true,
+							FontFace = Font.new(
+								"rbxassetid://11702779517",
+								Enum.FontWeight.Heavy,
+								Enum.FontStyle.Italic
+							),
+							LayoutOrder = 1,
+						}),
+
+						Warning = e("TextLabel", {
+							Size = UDim2.fromScale(1, 0.35),
+							BackgroundTransparency = 1,
+							Text = "Are you sure you want to play this word for "
+								.. (wordValidation.score or 0)
+								.. " points?",
+							TextColor3 = Color3.new(1, 1, 1),
+							TextWrapped = true,
+							TextScaled = true,
+							FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium),
+							LayoutOrder = 2,
+						}),
+
+						Buttons = e("Frame", {
+							Size = UDim2.fromScale(1, 0.3),
+							BackgroundTransparency = 1,
+							LayoutOrder = 3,
+						}, {
+							UIListLayout = e("UIListLayout", {
+								FillDirection = Enum.FillDirection.Horizontal,
+								SortOrder = Enum.SortOrder.LayoutOrder,
+								Padding = UDim.new(0.05, 0),
+								HorizontalAlignment = Enum.HorizontalAlignment.Center,
+							}),
+
+							Cancel = e(TextButton, {
+								Text = "Cancel",
+								Variant = "secondary",
+								Size = UDim2.fromScale(0.45, 1),
+								OnClick = function()
+									setShowSubmitConfirm(false)
+								end,
+							}),
+
+							Confirm = e(TextButton, {
+								Text = "Play",
+								Variant = "primary",
+								Size = UDim2.fromScale(0.45, 1),
+								OnClick = handleSubmit,
+							}),
+						}),
+					}),
+				})
+			or nil,
+
+		-- First game tutorial helper (shows hints for new players)
+		FirstGameHelperUI = showTutorialHelper
+				and not isSpectator
+				and gameState
+				and gameState.Phase == "inGame"
+				and isMyTurn
+				and e(FirstGameHelper, {
+					Rack = myRack,
+					PlacedTiles = placedTiles,
+					PlacedTilesCount = #placedTiles,
+					-- Force "IsBoardEmpty" to true so tutorial shows on my first turn
+					-- even if bots have played (user request)
+					IsBoardEmpty = true,
+					BoardPositions = tileAbsolutePositions.current,
+					RackPositions = rackTilePositions.current,
+					PlayButtonPosition = playButtonPos,
+					OnDismiss = function()
+						setShowTutorialHelper(false)
+						SettingsServiceClient:completeTutorial()
+					end,
+				})
+			or nil,
 	})
 end

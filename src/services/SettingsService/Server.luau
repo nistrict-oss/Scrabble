@@ -11,18 +11,15 @@ task.defer(function()
 end)
 
 local SETTINGS_SCHEMA = {
-	MusicEnabled = { type = "boolean", default = true },
-	SFXEnabled = { type = "boolean", default = true },
-	MusicVolume = { type = "number", default = 0.7, min = 0, max = 1 },
+	LobbyMusicVolume = { type = "number", default = 0.5, min = 0, max = 1 },
+	GameMusicVolume = { type = "number", default = 0.3, min = 0, max = 1 },
 	SFXVolume = { type = "number", default = 0.8, min = 0, max = 1 },
 	ShowStreaks = { type = "boolean", default = true },
 	ShowTableInfo = { type = "boolean", default = true },
 	ShowKeypad = { type = "boolean", default = true },
-	-- Keybinds (stored as key names like "A", "S", "M", "D")
-	KeyAdd = { type = "string", default = "A" },
-	KeySubtract = { type = "string", default = "S" },
-	KeyMultiply = { type = "string", default = "M" },
-	KeyDivide = { type = "string", default = "D" },
+	ShowTilePoints = { type = "boolean", default = true },
+	ConfirmMoves = { type = "boolean", default = false },
+	ShowRecentHighlight = { type = "boolean", default = false },
 }
 
 local SettingsServiceServer = {
@@ -46,16 +43,20 @@ function SettingsServiceServer.init(self: SettingsServiceServer)
 	})
 end
 
-function SettingsServiceServer.validateSetting(self: SettingsServiceServer, settingName: string, value: any): (boolean, any)
+function SettingsServiceServer.validateSetting(
+	self: SettingsServiceServer,
+	settingName: string,
+	value: any
+): (boolean, any)
 	local schema = SETTINGS_SCHEMA[settingName]
 	if not schema then
 		return false, nil
 	end
-	
+
 	if type(value) ~= schema.type then
 		return false, nil
 	end
-	
+
 	if schema.type == "number" then
 		if schema.min and value < schema.min then
 			value = schema.min
@@ -64,12 +65,14 @@ function SettingsServiceServer.validateSetting(self: SettingsServiceServer, sett
 			value = schema.max
 		end
 	end
-	
+
 	return true, value
 end
 
 function SettingsServiceServer.getSettings(self: SettingsServiceServer, player: Player): any?
-	if not DataService:hasProfile(player) then return nil end
+	if not DataService:hasProfile(player) then
+		return nil
+	end
 	return DataService:get(player, { "Settings" })
 end
 
@@ -78,45 +81,61 @@ function SettingsServiceServer.getSetting(self: SettingsServiceServer, player: P
 		local schema = SETTINGS_SCHEMA[settingName]
 		return schema and schema.default
 	end
-	
+
 	return DataService:get(player, { "Settings", settingName })
 end
 
-function SettingsServiceServer.updateSetting(self: SettingsServiceServer, player: Player, settingName: string, value: any): boolean
-	if not DataService:hasProfile(player) then return false end
-	
+function SettingsServiceServer.updateSetting(
+	self: SettingsServiceServer,
+	player: Player,
+	settingName: string,
+	value: any
+): boolean
+	if not DataService:hasProfile(player) then
+		return false
+	end
+
 	local valid, validatedValue = self:validateSetting(settingName, value)
-	if not valid then return false end
-	
+	if not valid then
+		return false
+	end
+
 	local oldValue = DataService:get(player, { "Settings", settingName })
 	DataService:set(player, { "Settings", settingName }, validatedValue)
-	
+
 	self.OnSettingChanged:Fire(player, settingName, validatedValue, oldValue)
 	self.Networker:fire({ player }, "SettingUpdated", settingName, validatedValue)
-	
+
 	-- Track setting changes for important settings
 	if AnalyticsService and oldValue ~= validatedValue then
 		AnalyticsService:trackSettingChanged(player, settingName, validatedValue)
 	end
-	
+
 	return true
 end
 
 function SettingsServiceServer.resetAllSettings(self: SettingsServiceServer, player: Player)
-	if not DataService:hasProfile(player) then return end
-	
+	if not DataService:hasProfile(player) then
+		return
+	end
+
 	local newSettings = {}
 	for settingName, schema in SETTINGS_SCHEMA do
 		newSettings[settingName] = schema.default
 	end
-	
+
 	DataService:set(player, { "Settings" }, newSettings)
-	
+
 	self.OnSettingChanged:Fire(player, "*", newSettings, nil)
 	self.Networker:fire({ player }, "SettingsLoaded", newSettings)
 end
 
-function SettingsServiceServer.UpdateSetting(self: SettingsServiceServer, player: Player, settingName: string, value: any)
+function SettingsServiceServer.UpdateSetting(
+	self: SettingsServiceServer,
+	player: Player,
+	settingName: string,
+	value: any
+)
 	self:updateSetting(player, settingName, value)
 end
 
@@ -138,10 +157,12 @@ function SettingsServiceServer.GetTutorialStatus(self: SettingsServiceServer, pl
 end
 
 function SettingsServiceServer.CompleteTutorial(self: SettingsServiceServer, player: Player)
-	if not DataService:hasProfile(player) then return end
+	if not DataService:hasProfile(player) then
+		return
+	end
 	DataService:set(player, { "TutorialCompleted" }, true)
 	self.Networker:fire({ player }, "TutorialStatus", true)
-	
+
 	-- Track tutorial completion
 	if AnalyticsService then
 		AnalyticsService:trackTutorialCompleted(player)
@@ -149,10 +170,12 @@ function SettingsServiceServer.CompleteTutorial(self: SettingsServiceServer, pla
 end
 
 function SettingsServiceServer.SkipTutorial(self: SettingsServiceServer, player: Player, atStep: number?)
-	if not DataService:hasProfile(player) then return end
+	if not DataService:hasProfile(player) then
+		return
+	end
 	DataService:set(player, { "TutorialCompleted" }, true)
 	self.Networker:fire({ player }, "TutorialStatus", true)
-	
+
 	-- Track tutorial skip with step info
 	if AnalyticsService then
 		AnalyticsService:trackTutorialSkipped(player, atStep)
@@ -160,7 +183,9 @@ function SettingsServiceServer.SkipTutorial(self: SettingsServiceServer, player:
 end
 
 function SettingsServiceServer.ResetTutorial(self: SettingsServiceServer, player: Player)
-	if not DataService:hasProfile(player) then return end
+	if not DataService:hasProfile(player) then
+		return
+	end
 	DataService:set(player, { "TutorialCompleted" }, false)
 	self.Networker:fire({ player }, "TutorialStatus", false)
 end

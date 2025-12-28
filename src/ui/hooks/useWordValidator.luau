@@ -76,7 +76,8 @@ local function calculateScore(word: string): number
 end
 
 -- Check if the board is empty (first move)
-local function isBoardEmpty(board: { { string? } }): boolean
+-- Board cells can be nil, strings (legacy), or tables with {letter, colors}
+local function isBoardEmpty(board: any): boolean
 	for row = 1, 15 do
 		if board[row] then
 			for col = 1, 15 do
@@ -89,10 +90,42 @@ local function isBoardEmpty(board: { { string? } }): boolean
 	return true
 end
 
+-- Helper to extract letter from a board cell (handles both string and table formats)
+local function extractLetter(cellData: any): string?
+	if cellData == nil then
+		return nil
+	elseif type(cellData) == "string" then
+		-- Legacy format: just a letter string
+		return cellData
+	elseif type(cellData) == "table" and cellData.letter then
+		-- New format: {letter: string, colors: {...}}
+		return cellData.letter
+	end
+	return nil
+end
+
+-- Helper to extract isBlank from a board cell
+local function extractIsBlank(cellData: any): boolean
+	if type(cellData) == "table" and cellData.isBlank == true then
+		return true
+	end
+	return false
+end
+
 -- Extract word from placed tiles with cross-word validation
 local function getWordFromPlacement(
-	placedTiles: { { row: number, col: number, letter: string } },
-	board: { { string? } }
+	placedTiles: {
+		{
+			row: number,
+			col: number,
+			letter: string,
+			rackIndex: number,
+			isBlank: boolean?,
+		}
+	},
+	board: any, -- Can contain nil, strings, or tiles with {letter, colors}
+	settings: { StarDoublesPoints: boolean? }?,
+	blankAssignments: { [string]: string }?
 ): WordValidation
 	if #placedTiles == 0 then
 		return {
@@ -157,7 +190,7 @@ local function getWordFromPlacement(
 			return info.letter
 		end
 		if board[row] then
-			return board[row][col]
+			return extractLetter(board[row][col])
 		end
 		return nil
 	end
@@ -240,6 +273,7 @@ local function getWordFromPlacement(
 						error = "No gaps allowed",
 						multipliers = {},
 						tileScores = {},
+						invalidWords = {},
 					}
 				end
 			end
@@ -354,21 +388,49 @@ local function getWordFromPlacement(
 			end
 
 			local letter = string.sub(word, i, i)
-			local val = LETTER_VALUES[letter] or 0
+
+			-- Determine strictly if this tile is a blank (0 points)
+			local isBlank = false
+			local placedInfo = placedLookup[r .. "," .. c]
+
+			if placedInfo then
+				-- Check pending blank assignments for placed tiles
+				local posKey = r .. "," .. c
+				if blankAssignments and blankAssignments[posKey] then
+					isBlank = true
+				end
+			else
+				-- Check existing board tiles
+				if board[r] and extractIsBlank(board[r][c]) then
+					isBlank = true
+				end
+			end
+
+			local val = if isBlank then 0 else (LETTER_VALUES[letter] or 0)
 			local contribution = val
 
-			local placedInfo = placedLookup[r .. "," .. c]
 			if placedInfo then
-				local type = ScrabbleConfig.SPECIAL_POSITIONS[r .. "," .. c]
-				local m = type and ScrabbleConfig.MULTIPLIERS[type]
-				local lMult = m and m.letter or 1
-				local wMult = m and m.word or 1
+				-- Special handling for center star based on settings
+				if r == 8 and c == 8 then
+					local isDoubling = not (settings and settings.StarDoublesPoints == false)
+					local mult = if isDoubling then 2 else 1
+					wordMult *= mult
+					contribution = val
+					if isDoubling then
+						table.insert(activeMultipliers, "CENTER")
+					end
+				else
+					local type = ScrabbleConfig.SPECIAL_POSITIONS[r .. "," .. c]
+					local m = type and ScrabbleConfig.MULTIPLIERS[type]
+					local lMult = m and m.letter or 1
+					local wMult = m and m.word or 1
 
-				contribution = val * lMult
-				wordMult = wordMult * wMult
+					contribution = val * lMult
+					wordMult = wordMult * wMult
 
-				if type then
-					table.insert(activeMultipliers, type)
+					if type then
+						table.insert(activeMultipliers, type)
+					end
 				end
 
 				table.insert(placedInSegment, placedInfo.rackIndex)
@@ -455,7 +517,7 @@ local function getWordFromPlacement(
 	if #invalidWords > 0 then
 		local errorMsg = nil
 		if boardEmpty and not touchesCenter then
-			errorMsg = "First word must touch the ★"
+			errorMsg = "First word must start on the ★"
 		elseif not boardEmpty then
 			-- adjacency check
 			local touchesExisting = false
@@ -512,8 +574,10 @@ end
 
 -- React hook
 local function useWordValidator(
-	placedTiles: { { row: number, col: number, letter: string } },
-	board: { { string? } }
+	placedTiles: { { row: number, col: number, letter: string, rackIndex: number } },
+	board: any, -- Can contain nil, strings, or tiles with {letter, colors}
+	settings: { StarDoublesPoints: boolean? }?,
+	blankAssignments: { [string]: string }?
 ): WordValidation
 	local validation, setValidation = React.useState({
 		word = "",
@@ -528,9 +592,9 @@ local function useWordValidator(
 	})
 
 	React.useEffect(function()
-		local result = getWordFromPlacement(placedTiles, board)
+		local result = getWordFromPlacement(placedTiles, board, settings, blankAssignments)
 		setValidation(result)
-	end, { placedTiles, board } :: { any })
+	end, { placedTiles, board, settings, blankAssignments } :: { any })
 
 	return validation
 end
