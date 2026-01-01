@@ -159,7 +159,8 @@ local function ScrabbleProvider(props)
 	React.useEffect(function()
 		local phase = if state.game then state.game.Phase else "lobby"
 
-		if phase == "inGame" then
+		-- Keep game music playing during inGame and endingGame phases
+		if phase == "inGame" or phase == "endingGame" then
 			SoundUtils.stopLobbyMusic()
 			SoundUtils.playGameMusic()
 		else

@@ -45,11 +45,20 @@ return function(props: ScoreParticleProps)
 		sound.SoundId = GameConstants.SOUNDS.SCORE_COLLECT
 		sound.Volume = (GameConstants.VOLUMES.SCORE_COLLECT or 1.0) * SoundUtils.getSFXVolume()
 
-		-- Calculate pitch based on tile position for ascending musical scale
-		-- Start at 1.0x, increase by 0.025x per tile, max 1.5x
+		-- Calculate pitch based on tile position
+		-- For positive scores: ascending scale (1.0 -> 1.5)
+		-- For negative scores (penalties): descending scale (0.9 -> 0.6)
 		local pitch = 1.0
-		if props.TileIndex then
-			pitch = math.min(1.0 + ((props.TileIndex - 1) * 0.025), 1.5)
+		if props.TileIndex and props.TotalTiles and props.TotalTiles > 0 then
+			local isNegative = props.Amount < 0
+			if isNegative then
+				-- Descending pitch for penalties: 0.9 down to 0.6
+				local progress = (props.TileIndex - 1) / math.max(props.TotalTiles - 1, 1)
+				pitch = 0.9 - (progress * 0.3) -- 0.9 -> 0.6
+			else
+				-- Ascending pitch for positive scores: 1.0 up to 1.5
+				pitch = math.min(1.0 + ((props.TileIndex - 1) * 0.025), 1.5)
+			end
 		end
 		sound.PlaybackSpeed = pitch
 
@@ -135,14 +144,20 @@ return function(props: ScoreParticleProps)
 		end
 	end, {})
 
+	-- Determine if this is a penalty (negative amount)
+	local isNegative = props.Amount < 0
+	local displayAmount = math.abs(props.Amount)
+	local displayText = if isNegative then "-" .. tostring(displayAmount) else "+" .. tostring(displayAmount)
+	local textColor = if isNegative then Color3.fromRGB(255, 80, 80) else Color3.fromRGB(255, 235, 100)
+
 	return e("TextLabel", {
 		Position = position,
 		Size = UDim2.fromScale(0.06, 0.04),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 1,
 		TextTransparency = transparency,
-		Text = "+" .. tostring(props.Amount),
-		TextColor3 = Color3.fromRGB(255, 235, 100), -- Golden yellow
+		Text = displayText,
+		TextColor3 = textColor,
 		TextScaled = true,
 		FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy, Enum.FontStyle.Italic),
 		Rotation = rotation,

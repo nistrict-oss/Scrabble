@@ -78,6 +78,8 @@ local ANIMATION_PALETTES = {
 }
 
 -- Helper function to lerp between colors in a palette
+local ScrabbleConfig = require(ReplicatedStorage.Shared.Modules.Game.ScrabbleConfig)
+
 local function getAnimatedColor(palette: { Color3 }, t: number): Color3
 	local numColors = #palette - 1 -- Last color is same as first for smooth loop
 	local scaledT = (t % 1) * numColors
@@ -90,36 +92,8 @@ local function getAnimatedColor(palette: { Color3 }, t: number): Color3
 	return c1:Lerp(c2, fraction)
 end
 
--- Letter point values
-local LETTER_VALUES = {
-	A = 1,
-	B = 3,
-	C = 3,
-	D = 2,
-	E = 1,
-	F = 4,
-	G = 2,
-	H = 4,
-	I = 1,
-	J = 8,
-	K = 5,
-	L = 1,
-	M = 3,
-	N = 1,
-	O = 1,
-	P = 3,
-	Q = 10,
-	R = 1,
-	S = 1,
-	T = 1,
-	U = 1,
-	V = 4,
-	W = 4,
-	X = 8,
-	Y = 4,
-	Z = 10,
-	["?"] = 0, -- Blank tile
-}
+-- Letter point values - use single source of truth from ScrabbleConfig
+local LETTER_VALUES = ScrabbleConfig.getLetterValues()
 
 export type LetterTileProps = {
 	Letter: string,

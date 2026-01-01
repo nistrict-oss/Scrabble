@@ -242,6 +242,9 @@ return function(props: EndScreenProps)
 		TweenService:Create(uiScale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
 			Scale = 1,
 		}):Play()
+
+		-- Play Lobby music when end screen appears
+		SoundUtils.playLobbyMusic()
 	end, {})
 
 	return e("Frame", {
@@ -312,150 +315,155 @@ return function(props: EndScreenProps)
 				}),
 			}) or nil,
 
-			ResultsList = (page == "Results") and e(
-				"ScrollingFrame",
-				{
-					Size = UDim2.fromScale(1, 0.6),
-					Position = UDim2.fromScale(0, 0.25),
-					BackgroundTransparency = 1,
-					AutomaticCanvasSize = Enum.AutomaticSize.Y,
-					ScrollBarThickness = 0,
-					ScrollingDirection = Enum.ScrollingDirection.Y,
-					Active = true,
-				},
-				(function()
-					local children = {
-						UIListLayout = e("UIListLayout", {
-							key = "ListLayout",
-							SortOrder = Enum.SortOrder.LayoutOrder,
-							Padding = UDim.new(0.03, 0),
-						}),
-
-						UIPadding = e("UIPadding", {
-							key = "Padding",
-							PaddingTop = UDim.new(0.01, 0),
-							PaddingLeft = UDim.new(0.05, 0),
-							PaddingRight = UDim.new(0.05, 0),
-						}),
-					}
-
-					for i, res in ipairs(results) do
-						local isWinner = i == 1
-						local rankColor = if i == 1
-							then Color3.fromRGB(255, 215, 0)
-							elseif i == 2 then Color3.fromRGB(192, 192, 192)
-							elseif i == 3 then Color3.fromRGB(205, 127, 50)
-							else Color3.fromRGB(180, 180, 200)
-
-						children["Result_" .. res.UserId] = e("Frame", {
-							Size = UDim2.fromScale(1, 1),
-							BackgroundTransparency = 0.95,
-							LayoutOrder = i,
-						}, {
-							UICorner = e("UICorner", { CornerRadius = UDim.new(0.2, 0) }),
-							UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-								AspectRatio = 7,
-							}),
-							UIStroke = e("UIStroke", {
-								Color = rankColor,
-								Thickness = if i <= 3 then 2 else 1,
-								Transparency = if i <= 3 then 0 else 0.5,
-							}),
-
-							UIPadding = e("UIPadding", {
-								PaddingLeft = UDim.new(0.04, 0),
-								PaddingRight = UDim.new(0.04, 0),
-							}),
-
-							Rank = e("TextLabel", {
-								Size = UDim2.fromScale(0.1, 1),
-								BackgroundTransparency = 1,
-								Text = i,
-								TextColor3 = rankColor,
-								TextScaled = true,
-								FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy),
-							}),
-
-							Avatar = e("ImageLabel", {
-								Size = UDim2.fromScale(0.12, 0.8),
-								Position = UDim2.fromScale(0.12, 0.1),
-								BackgroundTransparency = 1,
-								ZIndex = 2,
-							}, {
-								ActualPFP = e("ImageLabel", {
-									Size = UDim2.fromScale(1, 1),
-									BackgroundTransparency = 1,
-									Image = "rbxthumb://type=AvatarHeadShot&id=" .. res.UserId .. "&w=150&h=150",
-								}, {
-									UICorner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+			ResultsList = (page == "Results")
+					and e(
+						"ScrollingFrame",
+						{
+							Size = UDim2.fromScale(1, 0.6),
+							Position = UDim2.fromScale(0, 0.25),
+							BackgroundTransparency = 1,
+							AutomaticCanvasSize = Enum.AutomaticSize.Y,
+							ScrollBarThickness = 0,
+							ScrollingDirection = Enum.ScrollingDirection.Y,
+							Active = true,
+						},
+						(function()
+							local children = {
+								UIListLayout = e("UIListLayout", {
+									key = "ListLayout",
+									SortOrder = Enum.SortOrder.LayoutOrder,
+									Padding = UDim.new(0.03, 0),
 								}),
-							}),
 
-							Name = e("TextLabel", {
-								Size = UDim2.fromScale(0.5, 1),
-								Position = UDim2.fromScale(0.28, 0),
-								BackgroundTransparency = 1,
-								Text = res.Name,
-								TextColor3 = Color3.new(1, 1, 1),
-								TextScaled = true,
-								TextXAlignment = Enum.TextXAlignment.Left,
-								FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold),
-							}),
-							Score = e("TextLabel", {
-								Size = UDim2.fromScale(0.2, 1),
-								Position = UDim2.fromScale(0.8, 0),
-								BackgroundTransparency = 1,
-								Text = res.Score,
-								TextColor3 = if isWinner then Color3.new(1, 1, 1) else rankColor,
-								TextScaled = true,
-								TextXAlignment = Enum.TextXAlignment.Right,
-								FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy),
-							}),
-						})
-					end
+								UIPadding = e("UIPadding", {
+									key = "Padding",
+									PaddingTop = UDim.new(0.01, 0),
+									PaddingLeft = UDim.new(0.05, 0),
+									PaddingRight = UDim.new(0.05, 0),
+								}),
+							}
 
-					return children
-				end)()
-			) or e(
-				"ScrollingFrame",
-				{
-					Size = UDim2.fromScale(1, 0.85),
-					Position = UDim2.fromScale(0, 0),
-					BackgroundTransparency = 1,
-					AutomaticCanvasSize = Enum.AutomaticSize.Y,
-					ScrollBarThickness = 0,
-					ScrollingDirection = Enum.ScrollingDirection.Y,
-					CanvasSize = UDim2.fromScale(0, 0),
-					Active = true,
-				},
-				(function()
-					local children = {
-						UIListLayout = e("UIListLayout", {
-							SortOrder = Enum.SortOrder.LayoutOrder,
-							Padding = UDim.new(0.03, 0),
-						}),
-						UIPadding = e("UIPadding", {
-							PaddingTop = UDim.new(0.01, 0),
-							PaddingLeft = UDim.new(0.05, 0),
-							PaddingRight = UDim.new(0.05, 0),
-						}),
-					}
+							for i, res in ipairs(results) do
+								local isWinner = i == 1
+								local rankColor = if i == 1
+									then Color3.fromRGB(255, 215, 0)
+									elseif i == 2 then Color3.fromRGB(192, 192, 192)
+									elseif i == 3 then Color3.fromRGB(205, 127, 50)
+									else Color3.fromRGB(180, 180, 200)
 
-					if myStats then
-						for i, stat in ipairs(myStats) do
-							children["Stat_" .. i] = e(StatRow, {
-								index = i,
-								label = stat.Label,
-								value = stat.Value,
-								icon = stat.Icon,
-								color = stat.Color,
-							})
+								children["Result_" .. res.UserId] = e("Frame", {
+									Size = UDim2.fromScale(1, 1),
+									BackgroundTransparency = 0.95,
+									LayoutOrder = i,
+								}, {
+									UICorner = e("UICorner", { CornerRadius = UDim.new(0.2, 0) }),
+									UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
+										AspectRatio = 7,
+									}),
+									UIStroke = e("UIStroke", {
+										Color = rankColor,
+										Thickness = if i <= 3 then 2 else 1,
+										Transparency = if i <= 3 then 0 else 0.5,
+									}),
+
+									UIPadding = e("UIPadding", {
+										PaddingLeft = UDim.new(0.04, 0),
+										PaddingRight = UDim.new(0.04, 0),
+									}),
+
+									Rank = e("TextLabel", {
+										Size = UDim2.fromScale(0.1, 1),
+										BackgroundTransparency = 1,
+										Text = i,
+										TextColor3 = rankColor,
+										TextScaled = true,
+										FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy),
+									}),
+
+									Avatar = e("ImageLabel", {
+										Size = UDim2.fromScale(0.12, 0.8),
+										Position = UDim2.fromScale(0.12, 0.1),
+										BackgroundTransparency = 1,
+										ZIndex = 2,
+									}, {
+										ActualPFP = e("ImageLabel", {
+											Size = UDim2.fromScale(1, 1),
+											BackgroundTransparency = 1,
+											-- Use ID 1 for CPU players (negative IDs) so they have a valid avatar
+											Image = "rbxthumb://type=AvatarHeadShot&id=" .. (if res.UserId < 0
+												then 1
+												else res.UserId) .. "&w=150&h=150",
+										}, {
+											UICorner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
+										}),
+									}),
+
+									Name = e("TextLabel", {
+										Size = UDim2.fromScale(0.5, 1),
+										Position = UDim2.fromScale(0.28, 0),
+										BackgroundTransparency = 1,
+										Text = res.Name,
+										TextColor3 = Color3.new(1, 1, 1),
+										TextScaled = true,
+										TextXAlignment = Enum.TextXAlignment.Left,
+										FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold),
+									}),
+									Score = e("TextLabel", {
+										Size = UDim2.fromScale(0.2, 1),
+										Position = UDim2.fromScale(0.8, 0),
+										BackgroundTransparency = 1,
+										Text = res.Score,
+										TextColor3 = if isWinner then Color3.new(1, 1, 1) else rankColor,
+										TextScaled = true,
+										TextXAlignment = Enum.TextXAlignment.Right,
+										FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Heavy),
+									}),
+								})
+							end
+
+							return children
+						end)()
+					)
+				or e(
+					"ScrollingFrame",
+					{
+						Size = UDim2.fromScale(1, 0.85),
+						Position = UDim2.fromScale(0, 0),
+						BackgroundTransparency = 1,
+						AutomaticCanvasSize = Enum.AutomaticSize.Y,
+						ScrollBarThickness = 0,
+						ScrollingDirection = Enum.ScrollingDirection.Y,
+						CanvasSize = UDim2.fromScale(0, 0),
+						Active = true,
+					},
+					(function()
+						local children = {
+							UIListLayout = e("UIListLayout", {
+								SortOrder = Enum.SortOrder.LayoutOrder,
+								Padding = UDim.new(0.03, 0),
+							}),
+							UIPadding = e("UIPadding", {
+								PaddingTop = UDim.new(0.01, 0),
+								PaddingLeft = UDim.new(0.05, 0),
+								PaddingRight = UDim.new(0.05, 0),
+							}),
+						}
+
+						if myStats then
+							for i, stat in ipairs(myStats) do
+								children["Stat_" .. i] = e(StatRow, {
+									index = i,
+									label = stat.Label,
+									value = stat.Value,
+									icon = stat.Icon,
+									color = stat.Color,
+								})
+							end
 						end
-					end
 
-					return children
-				end)()
-			),
+						return children
+					end)()
+				),
 
 			Actions = e("Frame", {
 				Size = UDim2.fromScale(0.8, 0.11),

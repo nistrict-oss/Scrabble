@@ -17,6 +17,7 @@ export type GameBoardProps = {
 	Board: { { { letter: string, colors: { Tile: string, Text: string, Stroke: string } }? } }, -- 15x15 grid of tile data (nil = empty)
 	SelectedCell: { row: number, col: number }?,
 	PreviewCells: { { row: number, col: number } }?,
+	RemotePreviewCells: { { row: number, col: number } }?, -- Flashing previews from other players
 	LastMove: { UserId: number, PlacedTiles: { { r: number, c: number } }, TotalScore: number }?,
 	LocalUserId: number?, -- Local player's user ID (to filter recent highlights)
 	ShowRecentHighlight: boolean?, -- Whether to show recent tile highlights
@@ -34,6 +35,7 @@ return function(props: GameBoardProps)
 	local board = props.Board or {}
 	local selectedCell = props.SelectedCell
 	local previewCells = props.PreviewCells or {}
+	local remotePreviewCells = props.RemotePreviewCells or {}
 	local isWordValid = props.IsWordValid
 	local dragHoverCell = props.DragHoverCell
 
@@ -41,6 +43,12 @@ return function(props: GameBoardProps)
 	local previewLookup = {}
 	for _, cell in ipairs(previewCells) do
 		previewLookup[cell.row .. "," .. cell.col] = true
+	end
+
+	-- Build remote preview lookup (flashing tiles from other players)
+	local remotePreviewLookup = {}
+	for _, cell in ipairs(remotePreviewCells) do
+		remotePreviewLookup[cell.row .. "," .. cell.col] = true
 	end
 
 	-- Build recent cells lookup for highlighting (only for other players' moves when setting is enabled)
@@ -70,6 +78,7 @@ return function(props: GameBoardProps)
 			local tileIsBlank = if tileData then tileData.isBlank else nil
 			local isSelected = selectedCell and selectedCell.row == row and selectedCell.col == col
 			local isPreview = previewLookup[row .. "," .. col]
+			local isRemotePreview = remotePreviewLookup[row .. "," .. col] and not letter and not isPreview
 			local isDragHover = dragHoverCell and dragHoverCell.row == row and dragHoverCell.col == col
 			local isRecent = recentLookup[row .. "," .. col] and letter and not isPreview
 
@@ -86,6 +95,7 @@ return function(props: GameBoardProps)
 					IsBlank = tileIsBlank, -- Pass blank tile status
 					IsSelected = isSelected,
 					IsPreview = isPreview,
+					IsRemotePreview = isRemotePreview,
 					IsValid = isWordValid,
 					IsDragHover = isDragHover,
 					IsRecent = isRecent,

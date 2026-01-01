@@ -25,35 +25,83 @@ pcall(function()
 	SettingsServiceClient = require(ReplicatedStorage.Shared.Services.SettingsService.SettingsServiceClient)
 end)
 
--- Preloaded sound cache for instant playback
-local preloadedSounds: { [string]: Sound } = {}
-local isPreloaded = false
+-- Pre-created sound templates for instant playback
+local soundTemplates: { [string]: Sound } = {}
+local sfxFolder: Folder? = nil
+local isInitialized = false
 
--- Preload all game sounds for instant playback
-function SoundUtils.preloadSounds()
-	if isPreloaded then
+-- Initialize all sounds upfront in SoundService for instant playback
+function SoundUtils.init()
+	if isInitialized then
 		return
 	end
+	isInitialized = true
 
+	-- Create SFX folder in SoundService to hold all sound templates
+	sfxFolder = Instance.new("Folder")
+	sfxFolder.Name = "SFXTemplates"
+	sfxFolder.Parent = SoundService
+
+	-- Create SFX group for volume control
+	local sfxGroup = SoundService:FindFirstChild("SFX") :: SoundGroup?
+	if not sfxGroup then
+		sfxGroup = Instance.new("SoundGroup")
+		sfxGroup.Name = "SFX"
+		sfxGroup.Parent = SoundService
+	end
+
+	-- Create a Sound instance for each sound in GameConstants
+	for name, soundId in pairs(GameConstants.SOUNDS) do
+		local sound = Instance.new("Sound")
+		sound.Name = name
+		sound.SoundId = soundId
+		sound.Volume = GameConstants.VOLUMES[name] or 0.5
+		sound.SoundGroup = sfxGroup
+		sound.Parent = sfxFolder
+		soundTemplates[name] = sound
+	end
+
+	-- Also create bubble pop template
+	local bubblePop = Instance.new("Sound")
+	bubblePop.Name = "BUBBLE_POP"
+	bubblePop.SoundId = BUBBLE_POP_ID
+	bubblePop.Volume = 0.3
+	bubblePop.SoundGroup = sfxGroup
+	bubblePop.Parent = sfxFolder
+	soundTemplates["BUBBLE_POP"] = bubblePop
+
+	-- Ability activate sound template
+	local ABILITY_ACTIVATE_ID = "rbxassetid://119695407202262"
+	local abilityActivate = Instance.new("Sound")
+	abilityActivate.Name = "ABILITY_ACTIVATE"
+	abilityActivate.SoundId = ABILITY_ACTIVATE_ID
+	abilityActivate.Volume = 0.8
+	abilityActivate.SoundGroup = sfxGroup
+	abilityActivate.Parent = sfxFolder
+	soundTemplates["ABILITY_ACTIVATE"] = abilityActivate
+
+	-- Preload all sounds using ContentProvider
 	local ContentProvider = game:GetService("ContentProvider")
 	local soundsToPreload = {}
-
-	-- Collect all sound IDs from GameConstants
-	for _, soundId in pairs(GameConstants.SOUNDS) do
-		table.insert(soundsToPreload, soundId)
+	for _, sound in pairs(soundTemplates) do
+		table.insert(soundsToPreload, sound)
 	end
 
-	-- Preload using ContentProvider
-	local success, err = pcall(function()
-		ContentProvider:PreloadAsync(soundsToPreload)
+	task.spawn(function()
+		local success, err = pcall(function()
+			ContentProvider:PreloadAsync(soundsToPreload)
+		end)
+		if success then
+			print("✓ Initialized and preloaded", #soundsToPreload, "game sounds in SoundService")
+		else
+			warn("Failed to preload sounds:", err)
+		end
 	end)
+end
 
-	if success then
-		print("✓ Preloaded", #soundsToPreload, "game sounds")
-		isPreloaded = true
-	else
-		warn("Failed to preload sounds:", err)
-	end
+-- Legacy function for backwards compatibility
+function SoundUtils.preloadSounds()
+	SoundUtils.init()
 end
 
 -- Check if we should play sounds (prevents Hoarcekat from spamming sounds)
@@ -302,7 +350,6 @@ function SoundUtils.stopGameMusic()
 	end)
 end
 
-
 -- Play bubble pop sound (for loading screen letter reveal)
 function SoundUtils.playBubblePop()
 	if not SoundUtils.canPlaySounds() then
@@ -314,8 +361,17 @@ function SoundUtils.playBubblePop()
 		return nil
 	end
 
-	local sound = Instance.new("Sound")
-	sound.SoundId = BUBBLE_POP_ID
+	-- Ensure sounds are initialized
+	if not isInitialized then
+		SoundUtils.init()
+	end
+
+	local template = soundTemplates["BUBBLE_POP"]
+	if not template then
+		return nil
+	end
+
+	local sound = template:Clone()
 	sound.Volume = 0.3 * sfxVolume
 	sound.PlaybackSpeed = 0.9 + math.random() * 0.2 -- Slight pitch variation
 	sound.Parent = SoundService
@@ -360,15 +416,44 @@ function SoundUtils.playSound(soundId: string, baseVolume: number?)
 	return sound
 end
 
--- Play a sound from GameConstants.SOUNDS with matching volume from VOLUMES
+-- Play a sound from GameConstants.SOUNDS using pre-created templates
 function SoundUtils.playSoundFromConstants(soundName: string)
-	local soundId = GameConstants.SOUNDS[soundName]
-	local baseVolume = GameConstants.VOLUMES[soundName] or 0.5
-
-	if soundId then
-		return SoundUtils.playSound(soundId, baseVolume)
+	if not SoundUtils.canPlaySounds() then
+		return nil
 	end
-	return nil
+
+	local sfxVolume = SoundUtils.getSFXVolume()
+	if sfxVolume <= 0 then
+		return nil
+	end
+
+	-- Ensure sounds are initialized
+	if not isInitialized then
+		SoundUtils.init()
+	end
+
+	-- Get the pre-created template
+	local template = soundTemplates[soundName]
+	if not template then
+		warn("SoundUtils: No template found for", soundName)
+		return nil
+	end
+
+	-- Update SFX group volume
+	local sfxGroup = SoundService:FindFirstChild("SFX") :: SoundGroup?
+	if sfxGroup then
+		sfxGroup.Volume = sfxVolume
+	end
+
+	-- Clone the template for playback (allows overlapping sounds)
+	local sound = template:Clone()
+	sound.Parent = SoundService
+	sound:Play()
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+
+	return sound
 end
 
 -- Shorthand functions for common sounds
@@ -438,12 +523,20 @@ function SoundUtils.playScoreCollect()
 		return nil
 	end
 
-	local soundId = GameConstants.SOUNDS.SCORE_COLLECT
+	-- Ensure sounds are initialized
+	if not isInitialized then
+		SoundUtils.init()
+	end
+
+	local template = soundTemplates["SCORE_COLLECT"]
+	if not template then
+		return nil
+	end
+
 	local baseVolume = (GameConstants.VOLUMES.SCORE_COLLECT or 1.0) * sfxVolume
 
-	-- Create sound with slight variations to prevent Roblox from skipping instances
-	local sound = Instance.new("Sound")
-	sound.SoundId = soundId
+	-- Clone template with slight variations to prevent Roblox from skipping instances
+	local sound = template:Clone()
 	sound.Volume = baseVolume
 	-- Add slight random pitch variation (0.98 to 1.02) to ensure each instance is unique
 	sound.PlaybackSpeed = 0.98 + math.random() * 0.04
@@ -465,9 +558,40 @@ function SoundUtils.playScoreCollect()
 end
 
 -- Ability activation sound
-local ABILITY_ACTIVATE_ID = "rbxassetid://119695407202262"
 function SoundUtils.playAbilityActivate()
-	return SoundUtils.playSound(ABILITY_ACTIVATE_ID, 0.8)
+	if not SoundUtils.canPlaySounds() then
+		return nil
+	end
+
+	local sfxVolume = SoundUtils.getSFXVolume()
+	if sfxVolume <= 0 then
+		return nil
+	end
+
+	-- Ensure sounds are initialized
+	if not isInitialized then
+		SoundUtils.init()
+	end
+
+	local template = soundTemplates["ABILITY_ACTIVATE"]
+	if not template then
+		return nil
+	end
+
+	-- Update SFX group volume
+	local sfxGroup = SoundService:FindFirstChild("SFX") :: SoundGroup?
+	if sfxGroup then
+		sfxGroup.Volume = sfxVolume
+	end
+
+	local sound = template:Clone()
+	sound.Parent = SoundService
+	sound:Play()
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+
+	return sound
 end
 
 -- Connect settings listeners

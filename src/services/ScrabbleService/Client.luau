@@ -22,6 +22,7 @@ local ScrabbleServiceClient = {
 	OnLobbies = Signal.new(),
 	OnLobbyState = Signal.new(),
 	OnGameState = Signal.new(),
+	OnTilePreview = Signal.new(), -- Incoming tile previews from other players
 	OnSystemMessage = Signal.new(),
 	OnError = Signal.new(),
 }
@@ -139,6 +140,13 @@ function ScrabbleServiceClient:validateWord(word: string): boolean
 	return false
 end
 
+-- Send tile preview positions to other players (positions only, no letters)
+function ScrabbleServiceClient:sendTilePreview(positions: { { row: number, col: number } })
+	if self.Networker then
+		self.Networker:fire("TilePreview", positions)
+	end
+end
+
 -- Inbound Networker callbacks
 function ScrabbleServiceClient.LobbyList(self, lobbies: { LobbySummary })
 	self.Lobbies = lobbies or {}
@@ -186,6 +194,11 @@ end
 
 function ScrabbleServiceClient.ChatMessage(self, message: string)
 	self.OnSystemMessage:Fire(message)
+end
+
+-- Inbound: Receive tile preview positions from other players
+function ScrabbleServiceClient.TilePreview(self, userId: number, positions: { { row: number, col: number } })
+	self.OnTilePreview:Fire(userId, positions)
 end
 
 return ScrabbleServiceClient

@@ -167,6 +167,7 @@ function ScrabbleServiceServer:init()
 		self.Resign,
 		self.ValidateWord,
 		self.SendMessage,
+		self.TilePreview, -- Handle tile placement previews from players
 	})
 
 	task.spawn(function()
@@ -319,6 +320,11 @@ function ScrabbleServiceServer:sendGameState(lobby: Lobby)
 		Rewards = game.Rewards,
 		EliminatedPlayers = game.EliminatedPlayers,
 		CPUPlayerNames = cpuPlayerNames, -- Map of cpuId -> display name
+		-- End game fields (for endingGame phase)
+		Penalties = game.Penalties,
+		EndingMessage = game.EndingMessage,
+		EndingPlayerId = game.EndingPlayerId,
+		EndReason = game.EndReason,
 	}
 	-- Send each player their own rack
 	for _, plr in ipairs(lobby.Players) do
@@ -990,13 +996,14 @@ function ScrabbleServiceServer:handleForfeit(lobby: Lobby, forfeitingUserId: num
 	end
 end
 
-function ScrabbleServiceServer:endGame(lobby: Lobby)
+function ScrabbleServiceServer:endGame(lobby: Lobby, endingPlayerId: number?, endReason: string?)
 	local game = lobby.Game
-	if not game or game.Phase == "ended" then
+	if not game or game.Phase == "ended" or game.Phase == "endingGame" then
 		return
 	end
 
-	game.Phase = "ended"
+	-- Default end reason
+	local reason = endReason or "tiles_empty"
 
 	-- Capture final player names/IDs
 	game.FinalPlayers = {}
@@ -1006,18 +1013,99 @@ function ScrabbleServiceServer:endGame(lobby: Lobby)
 			Name = player.Name,
 		})
 	end
-
-	-- Apply penalties for remaining tiles
-	local letterValues = ScrabbleConfig.getLetterValues()
-	for userId, rack in pairs(game.Racks) do
-		local penalty = 0
-		for _, letter in ipairs(rack) do
-			penalty += letterValues[letter] or 1
-		end
-		if penalty > 0 then
-			game.Scores[userId] = (game.Scores[userId] or 0) - penalty
+	-- Also add CPU players to FinalPlayers
+	local cpuDifficulty = game.CPUDifficulty or "Easy"
+	if lobby.CPUPlayers then
+		for _, cpu in ipairs(lobby.CPUPlayers) do
+			-- Use getCPUName for proper name (cpu.Name may not be set if CPU was added at lobby creation)
+			local cpuName = cpu.Name or getCPUName(cpu.Id, cpu.Difficulty or cpuDifficulty)
+			table.insert(game.FinalPlayers, {
+				UserId = cpu.Id,
+				Name = cpuName,
+			})
 		end
 	end
+
+	-- Calculate penalties for remaining tiles (but don't apply yet)
+	local letterValues = ScrabbleConfig.getLetterValues()
+	local penalties = {}
+	for userId, rack in pairs(game.Racks) do
+		local penalty = 0
+		local tiles = {}
+		for _, letter in ipairs(rack) do
+			penalty += letterValues[letter] or 1
+			table.insert(tiles, letter)
+		end
+		if penalty > 0 then
+			penalties[tostring(userId)] = {
+				Amount = penalty,
+				Tiles = tiles,
+			}
+		end
+	end
+
+	-- Store penalty data and ending player for client animation
+	game.Penalties = penalties
+	game.EndingPlayerId = endingPlayerId
+	game.EndReason = reason
+
+	-- Generate ending message based on reason
+	if reason == "tiles_empty" and endingPlayerId then
+		-- Player placed all their tiles
+		if isCPU(endingPlayerId) then
+			local cpuDifficulty = game.CPUDifficulty or "Easy"
+			game.EndingPlayerName = getCPUName(endingPlayerId, cpuDifficulty)
+		else
+			local player = Players:GetPlayerByUserId(endingPlayerId)
+			game.EndingPlayerName = player and player.Name or "A player"
+		end
+		game.EndingMessage = game.EndingPlayerName:upper() .. " HAS PLACED ALL THEIR TILES!"
+	elseif reason == "time_out" then
+		game.EndingMessage = "TIME HAS RUN OUT!"
+	elseif reason == "all_passed" then
+		game.EndingMessage = "ALL PLAYERS HAVE PASSED!"
+	else
+		game.EndingMessage = "GAME OVER!"
+	end
+
+	-- Calculate max penalty to determine animation duration
+	local maxPenalty = 0
+	for _, p in pairs(penalties) do
+		if p.Amount > maxPenalty then
+			maxPenalty = p.Amount
+		end
+	end
+
+	-- Animation timing: 1.5s start delay + 0.15s per point + 2s buffer
+	local animationDuration = 1.5 + (maxPenalty * 0.15) + 2.0
+
+	-- Set to endingGame phase for point subtraction animation
+	game.Phase = "endingGame"
+	self:sendGameState(lobby)
+	self:sendLobbyState(lobby)
+
+	-- Wait for client animation, then finalize
+	task.delay(animationDuration, function()
+		if not lobby.Game or lobby.Game ~= game then
+			return -- Lobby was destroyed or game changed
+		end
+		self:finalizeEndGame(lobby)
+	end)
+end
+
+function ScrabbleServiceServer:finalizeEndGame(lobby: Lobby)
+	local game = lobby.Game
+	if not game or game.Phase == "ended" then
+		return
+	end
+
+	-- Apply penalties now
+	for userIdStr, penaltyData in pairs(game.Penalties or {}) do
+		local userId = tonumber(userIdStr) or userIdStr
+		game.Scores[userId] = (game.Scores[userId] or 0) - penaltyData.Amount
+	end
+
+	game.Phase = "ended"
 
 	-- Calculate winner
 	local maxScore = -999999
@@ -1124,6 +1212,24 @@ function ScrabbleServiceServer:triggerCPUTurn(lobby: Lobby)
 	local move = CPUService.findBestMove(game.Board, rack, difficulty, lobby.Settings)
 
 	if move then
+		-- Broadcast tile preview to all players before executing
+		local previewPositions = {}
+		for _, tile in ipairs(move.placedTiles) do
+			table.insert(previewPositions, { row = tile.row, col = tile.col })
+		end
+		self:broadcastCPUTilePreview(lobby, cpuUserId, previewPositions)
+
+		-- Brief delay to show the preview (tiles appearing one by one effect)
+		task.wait(0.5)
+
+		-- Clear preview and execute move
+		self:broadcastCPUTilePreview(lobby, cpuUserId, {})
+
+		-- Check again if game is still valid
+		if not lobby.Game or lobby.Game.Phase ~= "inGame" then
+			return
+		end
+
 		-- Execute the move
 		self:executeCPUMove(lobby, cpuUserId, cpuName, move)
 	else
@@ -1140,6 +1246,25 @@ function ScrabbleServiceServer:triggerCPUTurn(lobby: Lobby)
 			self:finishIfDone(lobby)
 			self:sendGameState(lobby)
 		end
+	end
+end
+
+-- Broadcast CPU tile preview to all players and spectators
+function ScrabbleServiceServer:broadcastCPUTilePreview(
+	lobby: Lobby,
+	cpuUserId: number,
+	positions: { { row: number, col: number } }
+)
+	local recipients = {}
+	for _, p in ipairs(lobby.Players) do
+		table.insert(recipients, p)
+	end
+	for _, p in ipairs(lobby.Spectators) do
+		table.insert(recipients, p)
+	end
+
+	if #recipients > 0 then
+		self.Networker:fire(recipients, "TilePreview", cpuUserId, positions)
 	end
 end
 
@@ -1212,24 +1337,27 @@ function ScrabbleServiceServer:executeCPUMove(lobby: Lobby, cpuUserId: number, c
 	self:sendLobbyState(lobby)
 end
 
-function ScrabbleServiceServer:finishIfDone(lobby: Lobby, forceEnd: boolean?)
+function ScrabbleServiceServer:finishIfDone(lobby: Lobby, forceEnd: boolean?, endReason: string?)
 	local game = lobby.Game
 	if not game then
 		return
 	end
 
-	local anyoneEmpty = false
+	local endingPlayerId = nil
 	if #game.Bag == 0 then
-		for _, rack in pairs(game.Racks) do
+		for userId, rack in pairs(game.Racks) do
 			if #rack == 0 then
-				anyoneEmpty = true
+				endingPlayerId = tonumber(userId) or userId
 				break
 			end
 		end
 	end
 
-	if anyoneEmpty or forceEnd then
-		self:endGame(lobby)
+	if endingPlayerId then
+		self:endGame(lobby, endingPlayerId, "tiles_empty")
+	elseif forceEnd then
+		-- Force end with specified reason (time_out, all_passed, etc.)
+		self:endGame(lobby, nil, endReason or "force_end")
 	end
 end
 
@@ -1724,6 +1852,46 @@ function ScrabbleServiceServer.ValidateWord(_self, _player: Player, word: string
 		return false
 	end
 	return isWordValid(word)
+end
+
+-- Handle tile preview positions from players (broadcasts to other players)
+function ScrabbleServiceServer.TilePreview(self, player: Player, positions: { { row: number, col: number } })
+	local lobby = self.PlayerLobby[player.UserId]
+	if not lobby or not lobby.Game or lobby.Game.Phase ~= "inGame" then
+		return
+	end
+
+	-- Only allow the current turn player to send previews
+	local game = lobby.Game
+	local currentTurnUserId = game.TurnOrder[game.TurnIndex]
+	if currentTurnUserId ~= player.UserId then
+		return -- Ignore previews from non-turn players
+	end
+
+	-- Validate positions are within bounds
+	local validPositions = {}
+	for _, pos in ipairs(positions or {}) do
+		local r, c = tonumber(pos.row), tonumber(pos.col)
+		if r and c and r >= 1 and r <= BOARD_SIZE and c >= 1 and c <= BOARD_SIZE then
+			table.insert(validPositions, { row = r, col = c })
+		end
+	end
+
+	-- Build recipient list (all players and spectators except the sender)
+	local recipients = {}
+	for _, p in ipairs(lobby.Players) do
+		if p.UserId ~= player.UserId then
+			table.insert(recipients, p)
+		end
+	end
+	for _, p in ipairs(lobby.Spectators) do
+		table.insert(recipients, p)
+	end
+
+	-- Broadcast to other players
+	if #recipients > 0 then
+		self.Networker:fire(recipients, "TilePreview", player.UserId, validPositions)
+	end
 end
 
 return ScrabbleServiceServer

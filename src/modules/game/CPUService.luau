@@ -35,7 +35,8 @@ function CPUService.getCPUName(cpuId: number, difficulty: string): string
 end
 
 -- Find all dictionary words that can be made from given letters
--- This is much faster than generating all permutations
+-- Scans longer words first to ensure high-scoring moves are prioritized
+-- Optimized: pre-filters words that contain unavailable letters
 local function findWordsFromLetters(letters: { string }, maxWords: number?): { string }
 	if not ScrabbleDictionary.Initialized then
 		ScrabbleDictionary:init()
@@ -44,56 +45,80 @@ local function findWordsFromLetters(letters: { string }, maxWords: number?): { s
 	local limit = maxWords or 100
 	local words = {}
 
-	-- Build letter count from rack
+	-- Build letter count from rack (for validation)
 	local letterCount = {}
+	local availableLetters = {} -- Set of letters we have
 	for _, letter in ipairs(letters) do
 		local l = string.upper(letter)
 		letterCount[l] = (letterCount[l] or 0) + 1
+		availableLetters[l] = true
 	end
 
-	-- Scan dictionary for words we can make (with yield to prevent lag)
-	local checked = 0
+	-- Helper: Check if word only uses available letters (fast pre-filter)
+	local function hasOnlyAvailableLetters(word)
+		for i = 1, #word do
+			local c = string.upper(string.sub(word, i, i))
+			if not availableLetters[c] then
+				return false
+			end
+		end
+		return true
+	end
+
+	-- Helper: Check if we have enough of each letter (full validation)
+	local function canMakeWord(word)
+		local tempCount = table.clone(letterCount)
+		for i = 1, #word do
+			local c = string.upper(string.sub(word, i, i))
+			if (tempCount[c] or 0) > 0 then
+				tempCount[c] = tempCount[c] - 1
+			else
+				return false
+			end
+		end
+		return true
+	end
+
+	-- Collect candidate words (pre-filtered by available letters)
+	local dictWords = {}
+	local scanned = 0
 	for word, _ in pairs(ScrabbleDictionary.Dictionary or {}) do
+		scanned = scanned + 1
+		-- Yield periodically during collection to prevent lag
+		if scanned % 5000 == 0 then
+			task.wait()
+		end
+		-- Only include words that:
+		-- 1. Are valid length (2+ chars, not longer than rack)
+		-- 2. Only contain letters we have in rack
+		if #word >= 2 and #word <= #letters and hasOnlyAvailableLetters(word) then
+			table.insert(dictWords, word)
+		end
+	end
+
+	-- Sort by length descending (longer words first)
+	table.sort(dictWords, function(a, b)
+		return #a > #b
+	end)
+
+	-- Validate words (check letter counts, with yield for lag prevention)
+	local checked = 0
+	for _, word in ipairs(dictWords) do
 		checked = checked + 1
 
 		-- Yield periodically to prevent lag
-		if checked % 1000 == 0 then
+		if checked % 3000 == 0 then
 			task.wait()
 		end
 
-		-- Stop scanning after checking enough words (increased to find more variety)
-		if checked > 30000 then
-			break
-		end
-
-		if #word >= 2 and #word <= #letters then
-			-- Check if we have all the letters needed
-			local tempCount = table.clone(letterCount)
-
-			local canMake = true
-			for i = 1, #word do
-				local c = string.upper(string.sub(word, i, i))
-				if (tempCount[c] or 0) > 0 then
-					tempCount[c] = tempCount[c] - 1
-				else
-					canMake = false
-					break
-				end
-			end
-
-			if canMake then
-				table.insert(words, string.upper(word))
-				if #words >= limit then
-					break
-				end
+		-- Full validation: check we have enough of each letter
+		if canMakeWord(word) then
+			table.insert(words, string.upper(word))
+			if #words >= limit then
+				break
 			end
 		end
 	end
-
-	-- Sort by word length descending to prioritize longer words
-	table.sort(words, function(a, b)
-		return #a > #b
-	end)
 
 	return words
 end
@@ -464,14 +489,18 @@ function CPUService.findBestMove(
 		ScrabbleDictionary:init()
 	end
 
-	-- Difficulty-based configuration
+	-- Start time for timeout
+	local startTime = os.clock()
+
+	-- Difficulty-based configuration (including timeout)
 	local config = {
-		Easy = { maxAnchors = 15, maxMoves = 15, movesPerAnchor = 8 },
-		Medium = { maxAnchors = 20, maxMoves = 25, movesPerAnchor = 10 },
-		Hard = { maxAnchors = 35, maxMoves = 50, movesPerAnchor = 15 },
-		Impossible = { maxAnchors = 50, maxMoves = 100, movesPerAnchor = 25 },
+		Easy = { maxAnchors = 15, maxMoves = 15, movesPerAnchor = 8, timeout = 15 },
+		Medium = { maxAnchors = 20, maxMoves = 25, movesPerAnchor = 10, timeout = 15 },
+		Hard = { maxAnchors = 35, maxMoves = 50, movesPerAnchor = 15, timeout = 30 },
+		Impossible = { maxAnchors = 50, maxMoves = 100, movesPerAnchor = 25, timeout = 30 },
 	}
 	local cfg = config[difficulty] or config.Medium
+	local MAX_SEARCH_TIME = cfg.timeout
 
 	local anchors = findAnchors(board)
 	local allMoves = {}
@@ -494,6 +523,12 @@ function CPUService.findBestMove(
 	-- Try each anchor with both directions
 	for _, anchor in ipairs(anchors) do
 		task.wait() -- Yield each iteration to prevent lag spikes
+
+		-- Timeout check: stop searching after 15 seconds
+		if os.clock() - startTime > MAX_SEARCH_TIME then
+			warn("[CPUService] Search timeout - using best moves found so far")
+			break
+		end
 
 		local acrossMoves = tryPlaceWord(board, rack, anchor, "across", settings)
 		local downMoves = tryPlaceWord(board, rack, anchor, "down", settings)

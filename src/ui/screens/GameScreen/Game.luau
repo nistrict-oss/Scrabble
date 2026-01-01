@@ -24,6 +24,7 @@ local ScoreContext = require(ReplicatedStorage.UI.contexts.ScoreContext)
 local useWordValidatorHook = require(ReplicatedStorage.UI.hooks.useWordValidator) -- Kept original import logic
 local EndScreen = require(ReplicatedStorage.UI.screens.GameScreen.EndScreen)
 local EliminationScreen = require(ReplicatedStorage.UI.screens.GameScreen.EliminationScreen)
+local EndGameAnnouncement = require(ReplicatedStorage.UI.components.game.EndGameAnnouncement)
 local BlankTileModal = require(ReplicatedStorage.UI.components.game.BlankTileModal)
 local FirstGameHelper = require(ReplicatedStorage.UI.components.game.FirstGameHelper)
 local SoundUtils = require(ReplicatedStorage.Shared.Modules.Core.SoundUtils)
@@ -61,6 +62,15 @@ return function(props: GameProps)
 		end)
 		return function()
 			conn:Disconnect()
+		end
+	end, {})
+
+	-- Manage Music
+	React.useEffect(function()
+		-- Play Game music when Game mounts
+		SoundUtils.playGameMusic()
+		return function()
+			-- Stop music or switch to Lobby music handled by next screen
 		end
 	end, {})
 
@@ -125,6 +135,25 @@ return function(props: GameProps)
 
 	-- Visual scoreboard state (decoupled from server)
 	local visualScores, setVisualScores = React.useState({} :: { [string]: number })
+
+	-- Remote tile preview state (tiles being placed by other players)
+	local remotePreviewCells, setRemotePreviewCells = React.useState({} :: { { row: number, col: number } })
+
+	-- Listen for tile previews from other players
+	React.useEffect(function()
+		local conn = ScrabbleServiceClient.OnTilePreview:Connect(function(_userId, positions)
+			-- Only show if it's not our turn (other player is placing)
+			setRemotePreviewCells(positions or {})
+		end)
+		return function()
+			conn:Disconnect()
+		end
+	end, {})
+
+	-- Clear remote previews when turn changes or game state changes significantly
+	React.useEffect(function()
+		setRemotePreviewCells({})
+	end, { gameState and gameState.TurnIndex })
 
 	-- Score animation state
 	local playerGoalPositions = React.useRef({} :: { [number]: Vector2 })
@@ -219,6 +248,15 @@ return function(props: GameProps)
 
 	React.useEffect(function()
 		if currentTurnUserId ~= lastActualTurnUserId.current then
+			-- Turn changed - clear any placed tiles if we had some
+			-- This ensures tiles don't persist if our turn was skipped/ended
+			local prevWasMyTurn = lastActualTurnUserId.current == LocalPlayer.UserId
+			if prevWasMyTurn then
+				setPlacedTiles({})
+				setBlankAssignments({})
+				setSelectedTileIndex(nil)
+			end
+
 			lastActualTurnUserId.current = currentTurnUserId
 
 			-- Delay visual turn switch if it was a placement (approx 1.5s for wave)
@@ -275,21 +313,46 @@ return function(props: GameProps)
 		table.insert(previewCells, { row = placed.row, col = placed.col })
 	end
 
+	-- Send tile preview positions to other players when our placement changes
+	React.useEffect(function()
+		-- Only send previews if we're placing tiles in an active game AND it's our turn
+		local isOurTurn = currentTurnUserId == LocalPlayer.UserId
+		if gameState and gameState.Phase == "inGame" and not isSpectator and isOurTurn then
+			local positions = {}
+			for _, placed in ipairs(placedTiles) do
+				table.insert(positions, { row = placed.row, col = placed.col })
+			end
+			ScrabbleServiceClient:sendTilePreview(positions)
+		end
+	end, { placedTiles, isSpectator, currentTurnUserId })
+
 	-- Consolidation of settings
 	local effectiveSettings = (lobbyState and lobbyState.Settings) or (gameState and gameState.Settings)
 
 	-- Word validation (MUST be called before any early returns)
 	local wordValidation = useWordValidator(placedTiles, board, effectiveSettings, blankAssignments)
 
-	-- Turn Notification logic
+	-- Turn Notification logic - use array to allow multiple concurrent announcements
 	local lastMoveRef = React.useRef(nil :: string?) -- Track last move fingerprint
-	local turnAnnouncement, setTurnAnnouncement =
-		React.useState(nil :: { Name: string, IsLocal: boolean, Key: string }?)
+	local announcements, setAnnouncements = React.useState({} :: { { Name: string, IsLocal: boolean, Key: string } })
+
+	-- Helper to remove a specific announcement by key
+	local function removeAnnouncementByKey(keyToRemove: string)
+		setAnnouncements(function(prev)
+			local filtered = {}
+			for _, ann in ipairs(prev) do
+				if ann.Key ~= keyToRemove then
+					table.insert(filtered, ann)
+				end
+			end
+			return filtered
+		end)
+	end
 
 	-- This effect triggers on gameState changes and checks if turn changed
 	React.useEffect(function()
 		if not gameState or gameState.Phase ~= "inGame" then
-			setTurnAnnouncement(nil)
+			setAnnouncements({})
 			return
 		end
 
@@ -344,15 +407,22 @@ return function(props: GameProps)
 				name = gameState.CPUPlayerNames[tostring(currentTurnUserId)]
 			end
 
-			setTurnAnnouncement({
+			local newAnnouncement = {
 				Name = name,
 				IsLocal = currentTurnUserId == LocalPlayer.UserId,
 				Key = turnFingerprint,
-			})
+			}
 
-			-- Clear after animation duration
+			-- Add to announcements array
+			setAnnouncements(function(prev)
+				local next = table.clone(prev)
+				table.insert(next, newAnnouncement)
+				return next
+			end)
+
+			-- Remove THIS specific announcement after animation duration (by key)
 			task.delay(3, function()
-				setTurnAnnouncement(nil)
+				removeAnnouncementByKey(turnFingerprint)
 			end)
 		end
 	end, { gameState })
@@ -507,6 +577,12 @@ return function(props: GameProps)
 					hasChanges = true
 				end
 
+				-- Force sync if game is fully ended (to ensure final scores are correct)
+				if gameState.Phase == "ended" and next[tostring(userIdStr)] ~= currentScore then
+					next[tostring(userIdStr)] = currentScore
+					hasChanges = true
+				end
+
 				if currentScore > prevScoreVal then
 					-- Score increased! Check for particles to spawn
 					local animationData = pendingAnimations.current[userId]
@@ -597,7 +673,7 @@ return function(props: GameProps)
 
 	-- Time Warning Log Entries (visible to all players in the game log)
 	-- Each warning tracks the log index when it was added so it appears in correct position
-	local timeWarnings, setTimeWarnings = React.useState({} :: { { text: string, color: string, logIndex: number } })
+	local timeWarnings, setTimeWarnings = React.useState({} :: { { text: string, color: string } })
 	local timeWarningsShown = React.useRef({
 		fiveMin = false,
 		oneMin = false,
@@ -629,9 +705,6 @@ return function(props: GameProps)
 		local turnPlayerName = turnPlayer and turnPlayer.Name or "Player"
 		local isLocal = visualTurnUserId == LocalPlayer.UserId
 
-		-- Get current log length to track when warning was added
-		local currentLogIndex = gameState.Log and #gameState.Log or 0
-
 		-- 5 minute warning (300 seconds)
 		if currentTurnTime <= 300 and currentTurnTime > 60 and not timeWarningsShown.current.fiveMin then
 			timeWarningsShown.current.fiveMin = true
@@ -640,7 +713,7 @@ return function(props: GameProps)
 				else "⏱ " .. turnPlayerName .. " has 5 minutes left"
 			setTimeWarnings(function(prev)
 				local next = table.clone(prev)
-				table.insert(next, { text = msg, color = "warning", logIndex = currentLogIndex })
+				table.insert(next, { text = msg, color = "warning" })
 				return next
 			end)
 		end
@@ -651,7 +724,7 @@ return function(props: GameProps)
 			local msg = if isLocal then "⚠ 1 minute remaining!" else "⚠ " .. turnPlayerName .. " has 1 minute left"
 			setTimeWarnings(function(prev)
 				local next = table.clone(prev)
-				table.insert(next, { text = msg, color = "warning", logIndex = currentLogIndex })
+				table.insert(next, { text = msg, color = "warning" })
 				return next
 			end)
 		end
@@ -666,7 +739,7 @@ return function(props: GameProps)
 					else turnPlayerName .. ": " .. secondsLeft .. "s"
 				setTimeWarnings(function(prev)
 					local next = table.clone(prev)
-					table.insert(next, { text = msg, color = "critical", logIndex = currentLogIndex })
+					table.insert(next, { text = msg, color = "critical" })
 					return next
 				end)
 			end
@@ -689,6 +762,73 @@ return function(props: GameProps)
 			prevTurnUserId.current = visualTurnUserId
 		end
 	end, { visualTurnUserId })
+
+	-- Penalty particle animation for endingGame phase
+	local penaltyAnimationTriggered = React.useRef(false)
+	React.useEffect(function()
+		if gameState and gameState.Phase == "endingGame" and not penaltyAnimationTriggered.current then
+			penaltyAnimationTriggered.current = true
+			local penalties = gameState.Penalties or {}
+
+			-- Find the maximum penalty to determine how many ticks we need
+			local maxPenalty = 0
+			local penaltyTrackers = {} -- Track remaining penalty for each player
+			for userIdStr, penaltyData in pairs(penalties) do
+				local amount = penaltyData.Amount or 0
+				if amount > maxPenalty then
+					maxPenalty = amount
+				end
+				penaltyTrackers[userIdStr] = {
+					remaining = amount,
+					userId = tonumber(userIdStr) or userIdStr,
+				}
+			end
+
+			-- Tick down all players simultaneously, -1 at a time
+			local tickInterval = 0.15 -- Time between each -1 tick (faster = more dramatic)
+			local startDelay = 1.5 -- Wait for announcement to finish
+
+			task.delay(startDelay, function()
+				-- Process ticks until all penalties are applied
+				local tickCount = 0
+				while tickCount < maxPenalty do
+					tickCount = tickCount + 1
+
+					-- Apply -1 to each player that still has penalty remaining
+					for _, tracker in pairs(penaltyTrackers) do
+						if tracker.remaining > 0 then
+							tracker.remaining = tracker.remaining - 1
+							local goalPos = playerGoalPositions.current[tracker.userId]
+
+							-- Update visual score immediately
+							onParticleComplete(tracker.userId, -1)
+
+							-- Spawn -1 particle (optional visual)
+							if goalPos and spawnParticle then
+								spawnParticle(
+									-1, -- Single point deduction
+									goalPos + Vector2.new(30, -10), -- Start slightly offset
+									goalPos,
+									0, -- No delay (we handle timing)
+									function() end, -- Score already updated above
+									tickCount, -- Use tick as index for pitch variation
+									maxPenalty -- Total ticks
+								)
+							end
+						end
+					end
+
+					-- Wait before next tick
+					if tickCount < maxPenalty then
+						task.wait(tickInterval)
+					end
+				end
+			end)
+		elseif gameState and gameState.Phase ~= "endingGame" then
+			-- Reset when phase changes
+			penaltyAnimationTriggered.current = false
+		end
+	end, { gameState and gameState.Phase, gameState and gameState.Penalties })
 
 	-- (Removed old score-based solo announcement - now handled in LastMove effect above)
 
@@ -1261,6 +1401,7 @@ return function(props: GameProps)
 					Board = e(GameBoard, {
 						Board = displayBoard,
 						PreviewCells = previewCells,
+						RemotePreviewCells = remotePreviewCells, -- Show other players' tile placements
 						IsWordValid = wordValidation.isValid,
 						DragHoverCell = dragHoverCell,
 						LastMove = gameState.LastMove, -- Pass recent move data
@@ -1494,27 +1635,14 @@ return function(props: GameProps)
 								end
 							end
 
-							-- Add time warning entries (local client state) at their correct positions
-							-- Sort warnings by logIndex to insert them in order
-							local sortedWarnings = table.clone(timeWarnings)
-							table.sort(sortedWarnings, function(a, b)
-								return a.logIndex < b.logIndex
-							end)
-
-							-- Insert warnings at their correct positions (offset for previous insertions)
-							local insertOffset = 0
-							for _, warning in ipairs(sortedWarnings) do
-								local insertPosition = warning.logIndex + 1 + insertOffset -- +1 because log is 0-indexed
-								-- Clamp to valid range
-								if insertPosition > #processedLog + 1 then
-									insertPosition = #processedLog + 1
-								end
-								table.insert(processedLog, insertPosition, {
+							-- Add time warning entries at the end of the log
+							-- (Simpler approach: just append instead of trying to insert at specific positions)
+							for _, warning in ipairs(timeWarnings) do
+								table.insert(processedLog, {
 									isTimeWarning = true,
 									text = warning.text,
 									color = warning.color,
 								})
-								insertOffset = insertOffset + 1
 							end
 
 							local log = processedLog
@@ -1553,8 +1681,8 @@ return function(props: GameProps)
 										}),
 
 										Avatar = e("ImageLabel", {
-											Size = UDim2.fromScale(0.1, 0.8),
-											Position = UDim2.fromScale(0, 0.1),
+											Size = UDim2.fromOffset(24, 24), -- Fixed pixel size
+											Position = UDim2.new(0, 0, 0, 0),
 											BackgroundTransparency = 1,
 											Image = "rbxthumb://type=AvatarHeadShot&id="
 												.. entry.UserId
@@ -1562,14 +1690,11 @@ return function(props: GameProps)
 										}, {
 											UICorner = e("UICorner", { CornerRadius = UDim.new(1, 0) }),
 											UIStroke = e("UIStroke", { Color = Color3.new(1, 1, 1), Thickness = 2 }),
-											UIAspectRatioConstraint = e("UIAspectRatioConstraint", {
-												AspectRatio = 1,
-											}),
 										}),
 
 										TextContainer = e("Frame", {
-											Size = UDim2.fromScale(0.88, 1),
-											Position = UDim2.fromScale(0.12, 0),
+											Size = UDim2.new(1, -30, 0, 0), -- Full width minus avatar
+											Position = UDim2.fromOffset(30, 0), -- After avatar
 											BackgroundTransparency = 1,
 											AutomaticSize = Enum.AutomaticSize.Y,
 										}, {
@@ -1579,8 +1704,7 @@ return function(props: GameProps)
 											}),
 
 											NameLabel = e("TextLabel", {
-												Size = UDim2.fromScale(1, 0),
-												AutomaticSize = Enum.AutomaticSize.Y,
+												Size = UDim2.new(1, 0, 0, 18), -- Fixed height for name
 												BackgroundTransparency = 1,
 												Text = entry.Name or "Unknown",
 												TextColor3 = Color3.fromRGB(255, 200, 100),
@@ -1595,7 +1719,7 @@ return function(props: GameProps)
 											}),
 
 											MessageLabel = e("TextLabel", {
-												Size = UDim2.fromScale(0.85, 0), -- Width constraint
+												Size = UDim2.fromScale(1, 0), -- Full width
 												AutomaticSize = Enum.AutomaticSize.Y,
 												BackgroundTransparency = 1,
 												Text = entry.Message,
@@ -1769,11 +1893,33 @@ return function(props: GameProps)
 				})
 			or nil,
 
-		TurnAnnouncementUI = turnAnnouncement and e(TurnAnnouncement, {
-			key = turnAnnouncement.Key,
-			PlayerName = turnAnnouncement.Name,
-			IsLocal = turnAnnouncement.IsLocal,
-		}) or nil,
+		-- End game announcement (shows reason: tiles placed, time out, all passed)
+		EndGameAnnouncementUI = (gameState.Phase == "endingGame" or gameState.Phase == "ended")
+				and gameState.EndingMessage
+				and e(EndGameAnnouncement, {
+					key = gameState.EndingMessage, -- Unique key forces remount for animation
+					Message = gameState.EndingMessage,
+				})
+			or nil,
+
+		-- Note: Penalty animation is handled by the useEffect in lines 726-791
+		-- which does tick-by-tick score subtraction with particles
+		-- Render all active turn announcements (each with independent lifecycle)
+		TurnAnnouncementsContainer = #announcements > 0 and e(
+			"Folder",
+			{},
+			(function()
+				local announcementElements = {}
+				for i, ann in ipairs(announcements) do
+					announcementElements["TurnAnnouncement_" .. i] = e(TurnAnnouncement, {
+						key = ann.Key,
+						PlayerName = ann.Name,
+						IsLocal = ann.IsLocal,
+					})
+				end
+				return announcementElements
+			end)()
+		) or nil,
 
 		-- Elimination screen for players who ran out of time
 		EliminationOverlay = (function()

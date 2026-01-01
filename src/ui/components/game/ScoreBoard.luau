@@ -44,6 +44,31 @@ local function ScoreEntry(props: {
 	local scaleRef = React.useRef(nil :: UIScale?)
 	local frameRef = React.useRef(nil :: Frame?)
 	local isEliminated = player.IsEliminated == true
+	local isCPU = player.UserId < 0 -- CPU players have negative IDs
+
+	-- Thinking animation state for CPU players (cycling dots: 0-3)
+	local dotCount, setDotCount = React.useState(0)
+	local thinkingText = "Thinking" .. string.rep(".", dotCount)
+
+	-- Cycle dots when CPU is thinking (only when it's their turn)
+	React.useEffect(function()
+		if not isCPU or not player.IsCurrentTurn or isEliminated then
+			return
+		end
+		local connection
+		connection = game:GetService("RunService").Heartbeat:Connect(function()
+			-- Cycle every ~400ms (4 stages: 0, 1, 2, 3 dots)
+			local dots = math.floor(os.clock() * 2.5) % 4
+			if dots ~= dotCount then
+				setDotCount(dots)
+			end
+		end)
+		return function()
+			if connection then
+				connection:Disconnect()
+			end
+		end
+	end, { isCPU, player.IsCurrentTurn, isEliminated })
 
 	local function reportPosition()
 		local frame = frameRef.current
@@ -133,7 +158,7 @@ local function ScoreEntry(props: {
 		}),
 
 		Name = e("TextLabel", {
-			Size = UDim2.fromScale(0.5, if player.TimeRemaining and not isEliminated then 0.5 else 1),
+			Size = UDim2.fromScale(0.5, if (player.TimeRemaining or isCPU) and not isEliminated then 0.5 else 1),
 			Position = UDim2.fromScale(0.18, 0),
 			BackgroundTransparency = 1,
 			Text = player.Name .. (if isEliminated then " (OUT)" else ""),
@@ -143,23 +168,46 @@ local function ScoreEntry(props: {
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Bold, Enum.FontStyle.Normal),
 		}),
 
-		TimeRemaining = player.TimeRemaining and not isEliminated and e("TextLabel", {
-			Size = UDim2.fromScale(0.4, 0.4),
-			Position = UDim2.fromScale(0.18, 0.55),
-			BackgroundTransparency = 1,
-			Text = if player.TimeRemaining >= 3600
-				then string.format(
-					"%d:%02d:%02d",
-					math.floor(player.TimeRemaining / 3600),
-					math.floor((player.TimeRemaining % 3600) / 60),
-					player.TimeRemaining % 60
-				)
-				else string.format("%d:%02d", math.floor(player.TimeRemaining / 60), player.TimeRemaining % 60),
-			TextColor3 = if player.IsCurrentTurn then Color3.new(1, 1, 1) else Color3.fromRGB(200, 200, 220),
-			TextScaled = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Normal),
-		}) or nil,
+		-- Timer for human players, "Thinking..." for CPU players on their turn
+		TimeRemaining = (function()
+			-- CPU with current turn: show thinking animation
+			if isCPU and player.IsCurrentTurn and not isEliminated then
+				return e("TextLabel", {
+					Size = UDim2.fromScale(0.4, 0.4),
+					Position = UDim2.fromScale(0.18, 0.55),
+					BackgroundTransparency = 1,
+					Text = thinkingText,
+					TextColor3 = Color3.fromRGB(200, 200, 220),
+					TextScaled = true,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Italic),
+				})
+			-- Human player with time remaining
+			elseif player.TimeRemaining and not isEliminated then
+				return e("TextLabel", {
+					Size = UDim2.fromScale(0.4, 0.4),
+					Position = UDim2.fromScale(0.18, 0.55),
+					BackgroundTransparency = 1,
+					Text = if player.TimeRemaining >= 3600
+						then string.format(
+							"%d:%02d:%02d",
+							math.floor(player.TimeRemaining / 3600),
+							math.floor((player.TimeRemaining % 3600) / 60),
+							player.TimeRemaining % 60
+						)
+						else string.format(
+							"%d:%02d",
+							math.floor(player.TimeRemaining / 60),
+							player.TimeRemaining % 60
+						),
+					TextColor3 = if player.IsCurrentTurn then Color3.new(1, 1, 1) else Color3.fromRGB(200, 200, 220),
+					TextScaled = true,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium, Enum.FontStyle.Normal),
+				})
+			end
+			return nil
+		end)(),
 
 		Score = e("TextLabel", {
 			Size = UDim2.fromScale(0.2, 1),
@@ -239,7 +287,8 @@ return function(props: ScoreBoardProps)
 		}),
 
 		Header = e("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 20),
+			Size = UDim2.new(1, 0, 0, 40),
+			Position = UDim2.new(0, 0, 0, 15),
 			BackgroundTransparency = 1,
 			Text = if props.Settings and props.Settings.StarDoublesPoints == false then "SCORES" else "SCORES (★ 2X)",
 			TextColor3 = Color3.new(1, 1, 1),
@@ -251,7 +300,7 @@ return function(props: ScoreBoardProps)
 			"ScrollingFrame",
 			{
 				Size = UDim2.new(1, 0, 1, -100), -- Leave room for header, volume slider, and tiles remaining
-				Position = UDim2.new(0, 0, 0, 24),
+				Position = UDim2.new(0, 0, 0, 65),
 				BackgroundTransparency = 1,
 				ScrollBarThickness = 4,
 				ScrollBarImageColor3 = Color3.fromRGB(200, 200, 220),
