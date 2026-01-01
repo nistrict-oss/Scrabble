@@ -26,14 +26,21 @@ return function(props)
 	-- Calculate min CPU count: 1 if solo (maxPlayers == 1), else 0
 	local minCpuCount = if maxPlayers == 1 then 1 else 0
 
-	-- Clamp cpuCount based on maxPlayers
+	-- Track previous maxPlayers to detect when it changes
+	local prevMaxPlayers, setPrevMaxPlayers = React.useState(maxPlayers)
+
+	-- Clamp cpuCount based on maxPlayers, and default to 0 when switching to multiplayer
 	React.useEffect(function()
-		if cpuCount > maxCpuCount then
+		-- When switching from solo (1) to multiplayer (2+), default CPU count to 0
+		if prevMaxPlayers == 1 and maxPlayers >= 2 then
+			setCpuCount(0)
+		elseif cpuCount > maxCpuCount then
 			setCpuCount(maxCpuCount)
 		elseif cpuCount < minCpuCount then
 			setCpuCount(minCpuCount)
 		end
-	end, { maxPlayers, cpuCount, maxCpuCount, minCpuCount })
+		setPrevMaxPlayers(maxPlayers)
+	end, { maxPlayers, cpuCount, maxCpuCount, minCpuCount, prevMaxPlayers })
 
 	-- Visibility state for animation
 	local isVisible = props.Visible ~= false -- Default to true if not specified
