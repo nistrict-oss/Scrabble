@@ -127,7 +127,6 @@ local function BoardVisual()
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
 	}, {
-		-- Main explanation text at top
 		ExplanationHeader = e("TextLabel", {
 			Size = UDim2.fromScale(0.95, 0.12),
 			Position = UDim2.fromScale(0.5, 0.02),
@@ -140,7 +139,6 @@ local function BoardVisual()
 			FontFace = Font.new("rbxassetid://11702779517", Enum.FontWeight.Medium),
 		}),
 
-		-- Board grid container (smaller, left side)
 		BoardContainer = e("Frame", {
 			Size = UDim2.fromScale(0.38, 0.6),
 			Position = UDim2.fromScale(0.05, 0.5),
@@ -154,7 +152,6 @@ local function BoardVisual()
 			}, cells),
 		}),
 		
-		-- Legend with explanations (right side)
 		Legend = e("Frame", {
 			Size = UDim2.fromScale(0.5, 0.7),
 			Position = UDim2.fromScale(0.95, 0.5),
