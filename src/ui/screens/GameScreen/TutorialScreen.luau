@@ -133,7 +133,7 @@ local function BoardVisual()
 			Position = UDim2.fromScale(0.5, 0.02),
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundTransparency = 1,
-			Text = "Scrabble is played on a 15×15 board with special bonus squares:",
+			Text = "Screbblo is played on a 15×15 board with special bonus squares:",
 			TextColor3 = Color3.fromRGB(220, 235, 255),
 			TextScaled = true,
 			TextWrapped = true,
